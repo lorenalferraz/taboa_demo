@@ -24,6 +24,9 @@ const MAPBIOMAS_MAX_RETRIES = 5;
 const MAPBIOMAS_RETRY_BASE_MS = 2000;
 const MAPBIOMAS_PAGE_LIMIT_FAIXA = 800;
 
+const { resolveRegiaoByNome, resolveRegiaoByIbge } = require('./municipios');
+const { normalizeFaixaShapeGeoJSON } = require('./municipiosNormalize');
+const { buildMunFeatureIndex, filterAlertsInMunIndex } = require('./municipiosGeomFilter');
 const { getScanFromFileCache, putScanInFileCache } = require('./scanCacheFile');
 const {
   isScanCachePayloadValid,
@@ -34,35 +37,6 @@ const {
 const { mapbiomasCredentials } = require('./mapbiomasAuth');
 
 const MUNICIPIOS_FILE = 'municipios.geojson';
-
-function dep(id) {
-  const loaded = require(id);
-  if (loaded && loaded.default && typeof loaded.default === 'object') {
-    const hasFn = Object.keys(loaded).some((k) => typeof loaded[k] === 'function');
-    if (!hasFn) return loaded.default;
-  }
-  return loaded || {};
-}
-
-function resolveRegiaoByNome(nomMun) {
-  return dep('./municipios').resolveRegiaoByNome(nomMun);
-}
-
-function resolveRegiaoByIbge(ibgeId) {
-  return dep('./municipios').resolveRegiaoByIbge(ibgeId);
-}
-
-function normalizeFaixaShapeGeoJSON(fg) {
-  return dep('./municipiosNormalize').normalizeFaixaShapeGeoJSON(fg);
-}
-
-function buildMunFeatureIndex(feats) {
-  return dep('./municipiosGeomFilter').buildMunFeatureIndex(feats);
-}
-
-function filterAlertsInMunIndex(col, munIndex, alertGeometryAndPointFn) {
-  return dep('./municipiosGeomFilter').filterAlertsInMunIndex(col, munIndex, alertGeometryAndPointFn);
-}
 
 const SCAN_ROOT = path.join(__dirname);
 const MUN_SCAN_CONCURRENCY = 2;
