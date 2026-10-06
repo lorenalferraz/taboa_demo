@@ -3,10 +3,23 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const assentamentosApi = require('./assentamentos');
-const loadedShape = require('./localShapeLoader');
-const localShape = global.__TABOA_SHAPE__ && typeof global.__TABOA_SHAPE__.loadFeaturesByBbox === 'function'
-  ? global.__TABOA_SHAPE__
-  : loadedShape;
+try { require('./localShapeLoader.js'); } catch (_) {}
+
+function loadShapeModule() {
+  const ready = global.__TABOA_SHAPE__;
+  if (ready && typeof ready.loadFeaturesByBbox === 'function') return ready;
+  const filename = path.join(__dirname, 'localShapeLoader.js');
+  if (fs.existsSync(filename)) {
+    const Module = require('module');
+    const m = new Module(filename, module);
+    m.filename = filename;
+    m.paths = Module._nodeModulePaths(path.dirname(filename));
+    m._compile(fs.readFileSync(filename, 'utf8'), filename);
+  }
+  return global.__TABOA_SHAPE__ || {};
+}
+
+const localShape = loadShapeModule();
 const { pruneScanFileCache } = require('./scanCacheFile');
 const { handleConsultaRelatorioPdf } = require('./relatorio');
 
@@ -191,7 +204,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'faixa-v5',
+      rev: 'faixa-v6',
       shape: typeof localShape.loadFeaturesByBbox,
       ts: Date.now(),
     }));
@@ -529,7 +542,15 @@ const server = http.createServer((req, res) => {
     const q = String(url.searchParams.get('q') || '');
     const municipio = String(url.searchParams.get('municipio') || '');
     const limit = Number(url.searchParams.get('limit') || 40);
-    shapeFn('searchImoveisRurais')({ q, municipio, limit }).then((result) => {
+    let search;
+    try {
+      search = shapeFn('searchImoveisRurais');
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+      res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
+      return;
+    }
+    search({ q, municipio, limit }).then((result) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
       res.end(JSON.stringify({ ok: true, ...result }));
     }).catch((e) => {
