@@ -206,7 +206,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'faixa-v7',
+      rev: 'faixa-v8',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),

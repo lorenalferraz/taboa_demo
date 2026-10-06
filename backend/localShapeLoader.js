@@ -4,7 +4,58 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
-const turf = require('@turf/turf');
+
+function pointInRing(pt, ring) {
+  const x = pt[0];
+  const y = pt[1];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const intersect = ((yi > y) !== (yj > y))
+      && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeometry(pt, geometry) {
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon') {
+    const rings = geometry.coordinates || [];
+    if (!rings.length || !pointInRing(pt, rings[0])) return false;
+    for (let i = 1; i < rings.length; i++) {
+      if (pointInRing(pt, rings[i])) return false;
+    }
+    return true;
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return (geometry.coordinates || []).some((poly) => pointInGeometry(pt, { type: 'Polygon', coordinates: poly }));
+  }
+  return false;
+}
+
+function geometryBbox(geometry) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  function walk(c) {
+    if (Array.isArray(c) && typeof c[0] === 'number') {
+      if (c[0] < minX) minX = c[0];
+      if (c[1] < minY) minY = c[1];
+      if (c[0] > maxX) maxX = c[0];
+      if (c[1] > maxY) maxY = c[1];
+      return;
+    }
+    if (Array.isArray(c)) c.forEach(walk);
+  }
+  walk(geometry && geometry.coordinates);
+  if (!Number.isFinite(minX)) return null;
+  return [minX, minY, maxX, maxY];
+}
 
 const SHAPE_DIR = path.join(__dirname, 'shape');
 const MUNICIPIOS_FILE = 'municipios.geojson';
@@ -368,16 +419,11 @@ async function municipioPorCoordenadaForApi(lat, lng) {
   const parsed = parseLatLng(lat, lng);
   if (!parsed.ok) return parsed;
   const fc = await loadFaixaShapeGeoJson();
-  let pt;
-  try {
-    pt = turf.point([parsed.lng, parsed.lat]);
-  } catch (_) {
-    return { ok: false, error: 'Coordenada inválida.' };
-  }
+  const pt = [parsed.lng, parsed.lat];
   for (const f of fc.features || []) {
     if (!f?.geometry) continue;
     try {
-      if (!turf.booleanPointInPolygon(pt, f)) continue;
+      if (!pointInGeometry(pt, f.geometry)) continue;
     } catch (_) {
       continue;
     }
@@ -424,7 +470,7 @@ function filterFeaturesByBbox(features, bbox) {
     if (!f?.geometry) continue;
     let fb = f._bbox;
     if (!fb) {
-      try { fb = turf.bbox(f.geometry); f._bbox = fb; } catch (_) {}
+      try { fb = geometryBbox(f.geometry); f._bbox = fb; } catch (_) {}
     }
     if (fb && !bboxesOverlap(fb, queryBbox)) continue;
     out.push(f);
