@@ -620,7 +620,7 @@ function drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH) {
 function drawMapGrid(doc, mapImg, imgX, imgY, imgW, imgH, px) {
   const decor = mapImg.decor || {};
   doc.save();
-  doc.strokeColor('#ffffff').strokeOpacity(0.5).lineWidth(0.7);
+  doc.strokeColor('#ffffff').strokeOpacity(0.18).lineWidth(0.45);
   for (const line of decor.vLines || []) {
     const [x] = px(line.x, 0);
     doc.moveTo(x, imgY).lineTo(x, imgY + imgH).stroke();
