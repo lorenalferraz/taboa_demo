@@ -23,7 +23,13 @@ function loadShapeModule() {
 
 const localShape = loadShapeModule();
 const { pruneScanFileCache } = require('./scanCacheFile');
-const { handleConsultaRelatorioPdf } = require('./relatorio');
+function relatorioHandler() {
+  const mod = require('./relatorio');
+  const fn = mod && (mod.handleConsultaRelatorioPdf || (mod.default && mod.default.handleConsultaRelatorioPdf));
+  if (typeof fn === 'function') return fn;
+  const keys = mod && typeof mod === 'object' ? Object.keys(mod).join(',') : String(mod);
+  throw new Error(`handleConsultaRelatorioPdf ${typeof fn} [${keys}]`);
+}
 
 const PORT = process.env.PORT || 3000;
 
@@ -215,7 +221,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'relatorio-v11',
+      rev: 'relatorio-v12',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
@@ -593,13 +599,15 @@ const server = http.createServer((req, res) => {
 
   // POST /api/consulta/relatorio — PDF da consulta (código em backend/relatorio)
   if (targetPath === '/api/consulta/relatorio' && req.method === 'POST') {
-    const probe = url.searchParams.get('probe') || '';
-    if (probe === 'ping') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
-      res.end(JSON.stringify({ ok: true, probe: 'ping', rev: 'relatorio-v11' }));
+    let handleConsultaRelatorioPdf;
+    try {
+      handleConsultaRelatorioPdf = relatorioHandler();
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+      res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
       return;
     }
-    handleConsultaRelatorioPdf(req, res, probe).catch((e) => {
+    Promise.resolve(handleConsultaRelatorioPdf(req, res)).catch((e) => {
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
         res.end(JSON.stringify({ ok: false, error: String(e && e.stack || e) }));

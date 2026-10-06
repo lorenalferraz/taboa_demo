@@ -827,4 +827,7 @@ async function buildConsultaPdf(raw = {}) {
   });
 }
 
-module.exports = { buildConsultaPdf, nowPtBr, formatHa, formatPct };
+exports.buildConsultaPdf = buildConsultaPdf;
+exports.nowPtBr = nowPtBr;
+exports.formatHa = formatHa;
+exports.formatPct = formatPct;

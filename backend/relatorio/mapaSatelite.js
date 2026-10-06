@@ -463,4 +463,4 @@ async function renderSatelliteMap(opts = {}) {
   return { png: jpeg, width: outW, height: outH, shapes, pin, legend };
 }
 
-module.exports = { renderSatelliteMap };
+exports.renderSatelliteMap = renderSatelliteMap;

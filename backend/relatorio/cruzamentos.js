@@ -555,10 +555,8 @@ async function identificarRlAppDoImovel(imoveis) {
   return { rl, app };
 }
 
-module.exports = {
-  cruzarAreaConsulta,
-  identificarMunicipios,
-  identificarImoveisCadastrais,
-  identificarRlAppDoImovel,
-  LAYERS,
-};
+exports.cruzarAreaConsulta = cruzarAreaConsulta;
+exports.identificarMunicipios = identificarMunicipios;
+exports.identificarImoveisCadastrais = identificarImoveisCadastrais;
+exports.identificarRlAppDoImovel = identificarRlAppDoImovel;
+exports.LAYERS = LAYERS;
