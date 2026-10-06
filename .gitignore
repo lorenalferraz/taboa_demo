@@ -1,0 +1,7 @@
+node_modules/
+frontend/dist/
+backend/.cache/
+backend/shape/.cache/
+.DS_Store
+*.log
+.env
