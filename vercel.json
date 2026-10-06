@@ -1,7 +1,7 @@
 {
   "functions": {
     "backend/server.js": {
-      "includeFiles": "backend/node_modules/pdfkit/js/standard-fonts/**"
+      "includeFiles": "{backend/node_modules/pdfkit/js/standard-fonts/**,backend/shape-runtime.txt}"
     }
   }
 }

@@ -3,18 +3,20 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const assentamentosApi = require('./assentamentos');
-try { require('./localShapeLoader.js'); } catch (_) {}
 
+let shapeLoadError = '';
 function loadShapeModule() {
   const ready = global.__TABOA_SHAPE__;
   if (ready && typeof ready.loadFeaturesByBbox === 'function') return ready;
-  const filename = path.join(__dirname, 'localShapeLoader.js');
-  if (fs.existsSync(filename)) {
+  const filename = path.join(__dirname, 'shape-runtime.txt');
+  try {
     const Module = require('module');
     const m = new Module(filename, module);
-    m.filename = filename;
-    m.paths = Module._nodeModulePaths(path.dirname(filename));
-    m._compile(fs.readFileSync(filename, 'utf8'), filename);
+    m.filename = path.join(__dirname, 'localShapeLoader.js');
+    m.paths = Module._nodeModulePaths(__dirname);
+    m._compile(fs.readFileSync(filename, 'utf8'), m.filename);
+  } catch (e) {
+    shapeLoadError = String(e && e.message || e);
   }
   return global.__TABOA_SHAPE__ || {};
 }
@@ -204,8 +206,9 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'faixa-v6',
+      rev: 'faixa-v7',
       shape: typeof localShape.loadFeaturesByBbox,
+      shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
     }));
     return;
