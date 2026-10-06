@@ -555,33 +555,117 @@ async function cruzarAreaConsulta(aoiGeom) {
   return out;
 }
 
-async function identificarMunicipios(aoiGeom) {
+function utmToLonLat(easting, northing, zone, south) {
+  const a = 6378137.0;
+  const f = 1 / 298.257222101;
+  const k0 = 0.9996;
+  const e2 = f * (2 - f);
+  const ep2 = e2 / (1 - e2);
+  const x = easting - 500000;
+  let y = northing;
+  if (south) y -= 10000000;
+  const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+  const M = y / k0;
+  const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * Math.pow(e2, 3) / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const fp = mu
+    + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu)
+    + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu)
+    + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu)
+    + (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+  const C1 = ep2 * Math.cos(fp) * Math.cos(fp);
+  const T1 = Math.tan(fp) * Math.tan(fp);
+  const N1 = a / Math.sqrt(1 - e2 * Math.sin(fp) * Math.sin(fp));
+  const R1 = a * (1 - e2) / Math.pow(1 - e2 * Math.sin(fp) * Math.sin(fp), 1.5);
+  const D = x / (N1 * k0);
+  const lat = fp - (N1 * Math.tan(fp) / R1) * (
+    D * D / 2
+    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24
+    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6) / 720
+  );
+  const lon = lon0 + (
+    D
+    - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6
+    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5) / 120
+  ) / Math.cos(fp);
+  return [lon * 180 / Math.PI, lat * 180 / Math.PI];
+}
+
+function transformUtmCoords(coords, zone, south) {
+  if (Array.isArray(coords) && typeof coords[0] === 'number') {
+    if (Math.abs(coords[0]) <= 180 && Math.abs(coords[1]) <= 90) return coords;
+    return utmToLonLat(coords[0], coords[1], zone, south);
+  }
+  return (coords || []).map((c) => transformUtmCoords(c, zone, south));
+}
+
+let municipiosWgs84Promise = null;
+
+async function loadMunicipiosWgs84() {
+  if (!municipiosWgs84Promise) {
+    municipiosWgs84Promise = (async () => {
+      const fc = await shapeFn('loadGeoJsonFile')('municipios.geojson');
+      const features = (fc.features || []).map((f) => {
+        if (!f?.geometry?.coordinates) return f;
+        return {
+          type: 'Feature',
+          properties: f.properties,
+          geometry: {
+            type: f.geometry.type,
+            coordinates: transformUtmCoords(f.geometry.coordinates, 24, true),
+          },
+        };
+      });
+      return { type: 'FeatureCollection', features };
+    })().catch((err) => {
+      municipiosWgs84Promise = null;
+      throw err;
+    });
+  }
+  return municipiosWgs84Promise;
+}
+
+function municipioNomeUf(feat) {
+  const p = feat?.properties || {};
+  const nome = String(p.nomMun || p.nm_mun || p.municipio || p.nome || '').trim();
+  const uf = String(p.sigla_uf || p.uf || 'BA').toUpperCase();
+  return nome ? `${nome}/${uf}` : '';
+}
+
+async function identificarMunicipios(aoiGeom, point) {
   const aoiFeat = asFeature(aoiGeom);
-  if (!aoiFeat?.geometry) return [];
+  const pt = Array.isArray(point) && point.length >= 2
+    ? [Number(point[0]), Number(point[1])]
+    : null;
+  if (!aoiFeat?.geometry && !(pt && Number.isFinite(pt[0]) && Number.isFinite(pt[1]))) return [];
   let fc;
   try {
-    fc = await shapeFn('loadGeoJsonFile')('municipios.geojson');
+    fc = await loadMunicipiosWgs84();
   } catch (_) {
     return [];
   }
   let aoiBbox = null;
-  try { aoiBbox = geomBbox(aoiFeat); } catch (_) {}
+  try { if (aoiFeat?.geometry) aoiBbox = geomBbox(aoiFeat); } catch (_) {}
   const hits = [];
   for (const f of fc.features || []) {
     if (!f?.geometry) continue;
     let fb = null;
     try { fb = geomBbox(f); } catch (_) {}
+    const label = municipioNomeUf(f);
+    if (!label) continue;
+    if (pt && Number.isFinite(pt[0]) && fb && bboxesOverlap(fb, [pt[0], pt[1], pt[0], pt[1]])) {
+      try {
+        if (pointInGeom(pt, f.geometry)) hits.push(label);
+      } catch (_) {}
+    }
+    if (!aoiFeat?.geometry) continue;
     if (fb && aoiBbox && !bboxesOverlap(fb, aoiBbox)) continue;
     try {
       if (!geometriesIntersect(aoiFeat, f)) continue;
     } catch (_) {
       continue;
     }
-    const p = f.properties || {};
-    const nome = String(p.nomMun || p.nm_mun || p.municipio || p.nome || '').trim();
-    const uf = String(p.sigla_uf || p.uf || 'BA').toUpperCase();
-    if (!nome) continue;
-    hits.push(`${nome}/${uf}`);
+    hits.push(label);
   }
   return [...new Set(hits)];
 }
@@ -591,10 +675,12 @@ function dadosImovelRural(feat) {
   const nome = String(p.DENOMINACA || '').trim().replace(/^["']+|["']+$/g, '');
   const car = String(p.NUMERO_CAR || '').trim();
   const ide = p.IDE_IMOVEL != null ? String(p.IDE_IMOVEL).trim() : '';
+  const municipio = String(p.MUNICIPIO || p.municipio || p.NM_MUN || '').trim();
   return {
     nome: nome || (ide ? `Imóvel ${ide}` : 'Imóvel rural'),
     car,
     ide,
+    municipio,
   };
 }
 

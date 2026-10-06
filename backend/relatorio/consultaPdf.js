@@ -131,10 +131,24 @@ function collectFonteNotas(alerts) {
   return notes;
 }
 
+function textoUtil(value) {
+  const s = txt(value);
+  return s === '—' ? '' : s;
+}
+
 function markFonte(value) {
   const s = txt(value);
   if (s === '—') return s;
   return `${s} *`;
+}
+
+function municipiosDosImoveis(imoveis) {
+  const nomes = [];
+  for (const im of imoveis || []) {
+    const n = String(im?.municipio || '').trim();
+    if (n) nomes.push(n.includes('/') ? n : `${n}/BA`);
+  }
+  return [...new Set(nomes)];
 }
 
 function municipioLabel(raw) {
@@ -569,7 +583,7 @@ function drawAlertLaudo(doc, y, alert, mun, index, total) {
     { label: 'Área do alerta', value: alert.areaOriginal || formatHa(alert.areaHa) },
     { label: 'Fonte do alerta', value: markFonte(alert.fonte || alert.sinal) },
     { label: 'Biomas', value: alert.bioma },
-    { label: 'Município / UF', value: alert.municipio || mun },
+    { label: 'Município / UF', value: textoUtil(alert.municipio) || mun },
     { label: 'Data do alerta', value: alert.detectado || alert.detectedAt },
     { label: 'Tamanho da sobreposição', value: alert.areaRecorte || formatHa(alert._clippedAreaHa) },
     { label: 'Sobreposição', value: alert.sobreposicao },
@@ -781,8 +795,11 @@ async function buildConsultaPdf(raw = {}) {
   } catch (e) {
     console.error('Falha nos cruzamentos do laudo:', e.message || e);
   }
+  const consultaPt = Array.isArray(payload.point) && payload.point.length >= 2
+    ? payload.point
+    : [Number(raw.lng), Number(raw.lat)];
   try {
-    municipiosShape = await identificarMunicipios(payload.aoi);
+    municipiosShape = await identificarMunicipios(payload.aoi, consultaPt);
   } catch (e) {
     console.error('Falha ao identificar município no shape:', e.message || e);
   }
@@ -790,16 +807,17 @@ async function buildConsultaPdf(raw = {}) {
     payload.mun = municipiosShape.join(', ');
   }
   try {
-    const pt = Array.isArray(payload.point) && payload.point.length >= 2
-      ? payload.point
-      : [Number(raw.lng), Number(raw.lat)];
     imoveisCadastro = await identificarImoveisCadastrais({
       aoiGeom: payload.aoi,
-      point: pt,
+      point: consultaPt,
       isPoint: !!payload.showBuffer,
     });
   } catch (e) {
     console.error('Falha ao identificar imóvel rural no laudo:', e.message || e);
+  }
+  if (!municipiosShape.length && !textoUtil(payload.mun)) {
+    const dosImoveis = municipiosDosImoveis(imoveisCadastro);
+    if (dosImoveis.length) payload.mun = dosImoveis.join(', ');
   }
   const imoveisNoMapa = imoveisCadastro.filter((im) => im.geometry);
   let rlAppImovel = { rl: [], app: [] };
