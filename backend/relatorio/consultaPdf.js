@@ -577,6 +577,59 @@ function drawAlertLaudo(doc, y, alert, mun, index, total) {
   return y;
 }
 
+function drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH) {
+  const sx = imgW / Math.max(mapImg.width, 1);
+  const sy = imgH / Math.max(mapImg.height, 1);
+  const px = (x, y) => [imgX + x * sx, imgY + y * sy];
+  doc.save();
+  try {
+    if (typeof doc.fillOpacity === 'function') doc.fillOpacity(0.22);
+    for (const shape of mapImg.shapes || []) {
+      for (const ring of shape.rings || []) {
+        if (!ring || ring.length < 3) continue;
+        const [x0, y0] = px(ring[0][0], ring[0][1]);
+        doc.moveTo(x0, y0);
+        for (let i = 1; i < ring.length; i++) {
+          const [x, y] = px(ring[i][0], ring[i][1]);
+          doc.lineTo(x, y);
+        }
+        doc.closePath();
+        doc.lineWidth(1.15);
+        doc.fillColor(shape.fill || '#38bdf8').strokeColor(shape.stroke || '#0369a1').fillAndStroke();
+      }
+    }
+    if (typeof doc.fillOpacity === 'function') doc.fillOpacity(1);
+    if (mapImg.pin) {
+      const [x, y] = px(mapImg.pin.x, mapImg.pin.y);
+      doc.circle(x, y, 4.2).lineWidth(1.4).fillColor('#ffffff').strokeColor('#0ea5e9').fillAndStroke();
+    }
+    doc.lineWidth(1).strokeColor(NAVY).rect(imgX, imgY, imgW, imgH).stroke();
+  } catch (_) {}
+  doc.restore();
+}
+
+function drawMapLegend(doc, y, legend) {
+  const items = Array.isArray(legend) ? legend.filter((item) => item?.label) : [];
+  if (!items.length) return y;
+  let x = MARGIN;
+  const rowH = 14;
+  doc.font(doc._sans).fontSize(8);
+  for (const item of items) {
+    const label = String(item.label);
+    const w = 16 + doc.widthOfString(label);
+    if (x > MARGIN && x + w > MARGIN + CONTENT_W) {
+      x = MARGIN;
+      y += rowH;
+    }
+    doc.save();
+    doc.rect(x, y + 1, 9, 9).fillColor(item.fill || '#38bdf8').fill();
+    doc.restore();
+    doc.fillColor(TEXT).text(label, x + 13, y, { lineBreak: false });
+    x += w + 12;
+  }
+  return y + rowH + 4;
+}
+
 function drawMapa(doc, y, mapImg) {
   const title = 'RESULTADO VISUAL DA CONSULTA';
   const titleH = 22;
@@ -585,10 +638,11 @@ function drawMapa(doc, y, mapImg) {
     let imgW = CONTENT_W;
     let imgH = imgW * ratio;
     const gap = 8;
-    if (y + titleH + imgH + gap > PAGE_LIMIT) {
-      y = ensureSpace(doc, y, titleH + imgH + gap);
+    const legendH = (mapImg.legend || []).length ? 18 : 0;
+    if (y + titleH + imgH + legendH + gap > PAGE_LIMIT) {
+      y = ensureSpace(doc, y, titleH + imgH + legendH + gap);
     }
-    const avail = PAGE_LIMIT - y - titleH - gap;
+    const avail = PAGE_LIMIT - y - titleH - legendH - gap;
     if (imgH > avail) {
       const scale = Math.max(avail, 160) / imgH;
       imgH *= scale;
@@ -598,12 +652,15 @@ function drawMapa(doc, y, mapImg) {
     syncCursor(doc, y);
     try {
       doc.image(mapImg.png, MARGIN, y, { width: imgW, height: imgH });
+      drawMapVectors(doc, mapImg, MARGIN, y, imgW, imgH);
     } catch (_) {
       doc.fillColor(MUTED).font(doc._sans).fontSize(9)
         .text('Não foi possível inserir o mapa de satélite.', MARGIN, y, { lineBreak: false });
       imgH = 14;
     }
-    y += imgH + gap;
+    y += imgH + 6;
+    y = drawMapLegend(doc, y, mapImg.legend);
+    y += gap;
     syncCursor(doc, y);
     return y;
   }

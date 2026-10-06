@@ -335,9 +335,47 @@ function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, fr
 </svg>`;
 }
 
+function geomPolys(geom) {
+  const g = geom?.type === 'Feature' ? geom.geometry : geom;
+  if (!g) return [];
+  if (g.type === 'Polygon') return [g.coordinates];
+  if (g.type === 'MultiPolygon') return g.coordinates;
+  return [];
+}
+
+function decimateRing(pts, max = 360) {
+  if (pts.length <= max) return pts;
+  const step = Math.ceil(pts.length / max);
+  const out = [];
+  for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
+  if (out.length && (out[0][0] !== pts[pts.length - 1][0] || out[0][1] !== pts[pts.length - 1][1])) {
+    out.push(pts[pts.length - 1]);
+  }
+  return out;
+}
+
+function shapeFromGeom(geom, toPx, scale, fill, stroke) {
+  const shapes = [];
+  for (const rings of geomPolys(geom)) {
+    const scaled = [];
+    for (const ring of rings || []) {
+      const pts = [];
+      for (const c of ring || []) {
+        const [x, y] = toPx(Number(c[0]), Number(c[1]));
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        pts.push([x * scale, y * scale]);
+      }
+      const slim = decimateRing(pts);
+      if (slim.length >= 3) scaled.push(slim);
+    }
+    if (scaled.length) shapes.push({ rings: scaled, fill, stroke });
+  }
+  return shapes;
+}
+
 /**
  * @param {{ aoi?: object, clips?: object[], point?: number[], overlays?: object[], frameGeom?: object, frameGeoms?: object[] }} opts
- * @returns {Promise<{ png: Buffer, width: number, height: number } | null>}
+ * @returns {Promise<{ png: Buffer, width: number, height: number, shapes?: object[], pin?: {x:number,y:number}, legend?: object[] } | null>}
  */
 async function renderSatelliteMap(opts = {}) {
   const aoi = opts.aoi?.type ? opts.aoi : opts.aoi?.geometry || opts.aoi;
@@ -384,36 +422,45 @@ async function renderSatelliteMap(opts = {}) {
   if (left + cropW > fullW) left = Math.max(0, fullW - cropW);
   if (top + cropH > fullH) top = Math.max(0, fullH - cropH);
 
-  const cropped = await sharp(mosaic).extract({ left, top, width: cropW, height: cropH }).png().toBuffer();
+  const cropped = await sharp(mosaic).extract({ left, top, width: cropW, height: cropH }).jpeg({ quality: 86 }).toBuffer();
 
   const toPx = (lng, lat) => [
     (lngToTileX(lng, z) - x0) * TILE - left,
     (latToTileY(lat, z) - y0) * TILE - top,
   ];
-  const frame = { left: 40, right: 40, top: 22, bottom: 26 };
-  const framedW = cropW + frame.left + frame.right;
-  const framedH = cropH + frame.top + frame.bottom;
-  const svg = buildOverlaySvg(cropW, cropH, toPx, aoi, clips, opts.point, bbox, overlays, frame);
-  const withOverlay = await sharp({
-    create: {
-      width: framedW,
-      height: framedH,
-      channels: 3,
-      background: { r: 255, g: 255, b: 255 },
-    },
-  }).composite([
-    { input: cropped, left: frame.left, top: frame.top },
-    { input: Buffer.from(svg), blend: 'over' },
-  ]).png().toBuffer();
-
-  const long = Math.max(framedW, framedH);
+  const long = Math.max(cropW, cropH);
   const scale = long > TARGET_LONG_SIDE ? TARGET_LONG_SIDE / long : 1;
-  const outW = Math.round(framedW * scale);
-  const outH = Math.round(framedH * scale);
-  let pipeline = sharp(withOverlay);
+  const outW = Math.round(cropW * scale);
+  const outH = Math.round(cropH * scale);
+  let pipeline = sharp(cropped);
   if (scale !== 1) pipeline = pipeline.resize(outW, outH);
   const jpeg = await pipeline.jpeg({ quality: 84 }).toBuffer();
-  return { png: jpeg, width: outW, height: outH };
+
+  const shapes = [];
+  const legend = [];
+  const seenLegend = new Set();
+  const push = (geom, fill, stroke, label) => {
+    const next = shapeFromGeom(geom, toPx, scale, fill, stroke);
+    if (!next.length) return;
+    shapes.push(...next);
+    if (label && !seenLegend.has(label)) {
+      seenLegend.add(label);
+      legend.push({ fill, stroke, label });
+    }
+  };
+  for (const o of overlays) {
+    push(o.geom, o.fill || '#f59e0b', o.stroke || '#b45309', o.legend || o.id);
+  }
+  for (const clip of clips.slice(0, 40)) {
+    push(clip, '#ef4444', '#fecaca', 'Alerta MapBiomas');
+  }
+  push(aoi, '#38bdf8', '#0369a1', 'Área de análise');
+  let pin = null;
+  if (opts.point && Number.isFinite(Number(opts.point[0])) && Number.isFinite(Number(opts.point[1]))) {
+    const [x, y] = toPx(Number(opts.point[0]), Number(opts.point[1]));
+    if (Number.isFinite(x) && Number.isFinite(y)) pin = { x: x * scale, y: y * scale };
+  }
+  return { png: jpeg, width: outW, height: outH, shapes, pin, legend };
 }
 
 module.exports = { renderSatelliteMap };

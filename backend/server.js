@@ -27,6 +27,15 @@ const { handleConsultaRelatorioPdf } = require('./relatorio');
 
 const PORT = process.env.PORT || 3000;
 
+// Uma rejeição solta (mapa, fonte, tile) não pode derrubar a função:
+// a Vercel devolve 500 sem CORS e o navegador mostra "Failed to fetch".
+if (!global.__TABOA_REJECTION__) {
+  global.__TABOA_REJECTION__ = true;
+  process.on('unhandledRejection', (err) => {
+    console.error('unhandledRejection', err && err.stack ? err.stack : err);
+  });
+}
+
 function shapeFn(name) {
   const fn = localShape && (localShape[name] || (localShape.default && localShape.default[name]));
   if (typeof fn === 'function') return fn;
@@ -206,7 +215,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'faixa-v8',
+      rev: 'relatorio-v9',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
