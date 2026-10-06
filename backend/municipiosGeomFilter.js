@@ -141,11 +141,9 @@ function filterAlertsInFaixaIndex(collection, index, alertGeometryAndPoint) {
   return out;
 }
 
-module.exports = {
-  buildMunFeatureIndex,
-  buildFaixaFeatureIndex,
-  alertHitsFeatureIndex,
-  buildAlertGeomCtx,
-  filterAlertsInMunIndex,
-  filterAlertsInFaixaIndex,
-};
+exports.buildMunFeatureIndex = buildMunFeatureIndex;
+exports.buildFaixaFeatureIndex = buildFaixaFeatureIndex;
+exports.alertHitsFeatureIndex = alertHitsFeatureIndex;
+exports.buildAlertGeomCtx = buildAlertGeomCtx;
+exports.filterAlertsInMunIndex = filterAlertsInMunIndex;
+exports.filterAlertsInFaixaIndex = filterAlertsInFaixaIndex;

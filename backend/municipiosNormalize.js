@@ -68,8 +68,6 @@ function normalizeFaixaShapeGeoJSON(geojson) {
   };
 }
 
-module.exports = {
-  normalizeFaixaShapeGeoJSON,
-  FAIXA_BBOX,
-  FAIXA_IBGE_SET,
-};
+exports.normalizeFaixaShapeGeoJSON = normalizeFaixaShapeGeoJSON;
+exports.FAIXA_BBOX = FAIXA_BBOX;
+exports.FAIXA_IBGE_SET = FAIXA_IBGE_SET;

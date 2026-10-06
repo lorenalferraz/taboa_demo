@@ -25,4 +25,4 @@ function mapbiomasCredentials() {
   return { email, password };
 }
 
-module.exports = { mapbiomasCredentials };
+exports.mapbiomasCredentials = mapbiomasCredentials;

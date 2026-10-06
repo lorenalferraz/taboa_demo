@@ -1,7 +1,8 @@
 {
   "functions": {
     "backend/server.js": {
-      "includeFiles": "{backend/relatorio/standard-fonts/**,backend/node_modules/pdfkit/js/standard-fonts/**,backend/shape-runtime.txt}"
+      "includeFiles": "{backend/relatorio/standard-fonts/**,backend/node_modules/pdfkit/js/standard-fonts/**,backend/shape-runtime.txt,backend/scan-seed/**}",
+      "maxDuration": 60
     }
   }
 }

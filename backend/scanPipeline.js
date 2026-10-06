@@ -74,13 +74,11 @@ function hydrateScanPayload(payload) {
   };
 }
 
-module.exports = {
-  SCAN_PIPELINE_VERSION,
-  SCAN_SOURCES,
-  extractAlertsArray,
-  isScanCachePayloadValid,
-  scanPipelineCacheSuffix,
-  compactScanPayload,
-  enrichScanPayload,
-  hydrateScanPayload,
-};
+exports.SCAN_PIPELINE_VERSION = SCAN_PIPELINE_VERSION;
+exports.SCAN_SOURCES = SCAN_SOURCES;
+exports.extractAlertsArray = extractAlertsArray;
+exports.isScanCachePayloadValid = isScanCachePayloadValid;
+exports.scanPipelineCacheSuffix = scanPipelineCacheSuffix;
+exports.compactScanPayload = compactScanPayload;
+exports.enrichScanPayload = enrichScanPayload;
+exports.hydrateScanPayload = hydrateScanPayload;

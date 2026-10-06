@@ -93,13 +93,11 @@ function resolveRegiaoByNome(nomMun) {
   return hit?.regiao || '';
 }
 
-module.exports = {
-  FAIXA_MUNICIPIOS,
-  FAIXA_IBGE_SET,
-  BY_IBGE,
-  BY_NOME,
-  normMunNome,
-  resolveCatalogByNome,
-  resolveRegiaoByIbge,
-  resolveRegiaoByNome,
-};
+exports.FAIXA_MUNICIPIOS = FAIXA_MUNICIPIOS;
+exports.FAIXA_IBGE_SET = FAIXA_IBGE_SET;
+exports.BY_IBGE = BY_IBGE;
+exports.BY_NOME = BY_NOME;
+exports.normMunNome = normMunNome;
+exports.resolveCatalogByNome = resolveCatalogByNome;
+exports.resolveRegiaoByIbge = resolveRegiaoByIbge;
+exports.resolveRegiaoByNome = resolveRegiaoByNome;

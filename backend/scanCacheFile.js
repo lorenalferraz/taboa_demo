@@ -69,4 +69,19 @@ function pruneScanFileCache(root) {
   return removed;
 }
 
-module.exports = { getScanFromFileCache, putScanInFileCache, pruneScanFileCache, SCAN_FILE_CACHE_TTL_MS };
+function getScanSeed() {
+  const file = path.join(__dirname, 'scan-seed', 'latest.json');
+  try {
+    if (!fs.existsSync(file)) return null;
+    const row = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return row?.payload || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+exports.getScanFromFileCache = getScanFromFileCache;
+exports.putScanInFileCache = putScanInFileCache;
+exports.pruneScanFileCache = pruneScanFileCache;
+exports.getScanSeed = getScanSeed;
+exports.SCAN_FILE_CACHE_TTL_MS = SCAN_FILE_CACHE_TTL_MS;

@@ -2,9 +2,116 @@
 
 const fs = require('fs');
 const path = require('path');
-const turf = require('@turf/turf');
 const proj4pkg = require('proj4');
 const proj4 = typeof proj4pkg === 'function' ? proj4pkg : (proj4pkg && proj4pkg.default) || proj4pkg;
+
+function walkCoords(geom, fn) {
+  if (!geom?.coordinates) return;
+  const t = geom.type;
+  if (t === 'Point') fn(geom.coordinates);
+  else if (t === 'MultiPoint' || t === 'LineString') geom.coordinates.forEach(fn);
+  else if (t === 'MultiLineString' || t === 'Polygon') geom.coordinates.forEach((r) => r.forEach(fn));
+  else if (t === 'MultiPolygon') geom.coordinates.forEach((p) => p.forEach((r) => r.forEach(fn)));
+}
+
+function geomBbox(geom) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  walkCoords(geom, (c) => {
+    const x = Number(c[0]);
+    const y = Number(c[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  });
+  if (!Number.isFinite(minX)) return null;
+  return [minX, minY, maxX, maxY];
+}
+
+function pointInRing(pt, ring) {
+  const x = pt[0];
+  const y = pt[1];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+    const intersect = ((yi > y) !== (yj > y))
+      && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeom(pt, geom) {
+  if (!geom) return false;
+  if (geom.type === 'Point') {
+    return Math.abs(Number(geom.coordinates[0]) - pt[0]) < 1e-8
+      && Math.abs(Number(geom.coordinates[1]) - pt[1]) < 1e-8;
+  }
+  const polys = geom.type === 'Polygon' ? [geom.coordinates]
+    : geom.type === 'MultiPolygon' ? geom.coordinates
+      : null;
+  if (!polys) return false;
+  return polys.some((rings) => rings?.[0] && pointInRing(pt, rings[0])
+    && !rings.slice(1).some((hole) => pointInRing(pt, hole)));
+}
+
+function sampleRing(ring, max) {
+  if (!ring || ring.length <= max) return ring || [];
+  const step = Math.ceil(ring.length / max);
+  const out = [];
+  for (let i = 0; i < ring.length; i += step) out.push(ring[i]);
+  return out;
+}
+
+function segmentsCross(a, b, c, d) {
+  const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = cross(a, b, c);
+  const d2 = cross(a, b, d);
+  const d3 = cross(c, d, a);
+  const d4 = cross(c, d, b);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function ringsOf(geom) {
+  if (!geom) return [];
+  if (geom.type === 'Polygon') return geom.coordinates || [];
+  if (geom.type === 'MultiPolygon') return (geom.coordinates || []).flat();
+  if (geom.type === 'LineString') return [geom.coordinates];
+  return [];
+}
+
+function geometriesIntersect(a, b) {
+  if (!a || !b) return false;
+  const ba = geomBbox(a);
+  const bb = geomBbox(b);
+  if (ba && bb && (ba[2] < bb[0] || ba[0] > bb[2] || ba[3] < bb[1] || ba[1] > bb[3])) return false;
+  if (a.type === 'Point') return pointInGeom(a.coordinates, b);
+  if (b.type === 'Point') return pointInGeom(b.coordinates, a);
+  let inside = false;
+  walkCoords(a, (c) => { if (!inside && pointInGeom(c, b)) inside = true; });
+  if (inside) return true;
+  walkCoords(b, (c) => { if (!inside && pointInGeom(c, a)) inside = true; });
+  if (inside) return true;
+  const ra = ringsOf(a).map((ring) => sampleRing(ring, 60));
+  const rb = ringsOf(b).map((ring) => sampleRing(ring, 60));
+  for (const ringA of ra) {
+    for (let i = 0; i < ringA.length - 1; i++) {
+      for (const ringB of rb) {
+        for (let j = 0; j < ringB.length - 1; j++) {
+          if (segmentsCross(ringA[i], ringA[i + 1], ringB[j], ringB[j + 1])) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 const MAPBIOMAS_ALERT_COLLECTION_GQL = `
   alertCode
@@ -28,7 +135,7 @@ const MAPBIOMAS_PAGE_LIMIT_FAIXA = 800;
 const { resolveRegiaoByNome, resolveRegiaoByIbge } = require('./municipios');
 const { normalizeFaixaShapeGeoJSON } = require('./municipiosNormalize');
 const { buildMunFeatureIndex, filterAlertsInMunIndex } = require('./municipiosGeomFilter');
-const { getScanFromFileCache, putScanInFileCache } = require('./scanCacheFile');
+const { getScanFromFileCache, putScanInFileCache, getScanSeed } = require('./scanCacheFile');
 const {
   isScanCachePayloadValid,
   scanPipelineCacheSuffix,
@@ -298,7 +405,7 @@ function alertGeometryAndPoint(alert) {
 function alertRoughBbox(alert) {
   const { geojson, point } = alertGeometryAndPoint(alert);
   try {
-    if (geojson) return turf.bbox(geojson);
+    if (geojson) return geomBbox(geojson);
     if (point) return [point[1], point[0], point[1], point[0]];
   } catch (_) {}
   return null;
@@ -324,7 +431,7 @@ function sampleVerticesInsidePoly(ring, poly, maxSamples) {
   const step = Math.max(1, Math.floor(ring.length / (maxSamples || 8)));
   for (let i = 0; i < ring.length; i += step) {
     try {
-      if (turf.booleanPointInPolygon(turf.point(ring[i]), poly)) return true;
+      if (pointInGeom(ring[i], poly)) return true;
     } catch (_) {}
   }
   return false;
@@ -342,34 +449,26 @@ function alertHitsFaixaPlanningArea(alert, faixaFC, faixaUnionBbox) {
   const { geojson, point } = alertGeometryAndPoint(alert);
   if (!geojson && !point) return false;
 
-  let alertFeat = null;
-  let pt = null;
-  try { alertFeat = geojson ? turf.feature(geojson) : null; } catch (_) {}
-  try { pt = point ? turf.point([point[1], point[0]]) : null; } catch (_) {}
+  const alertGeom = geojson || null;
+  const pt = point ? [point[1], point[0]] : null;
 
   for (const f of feats) {
     if (!f.geometry) continue;
-    try {
-      const fb = turf.bbox(f.geometry);
-      if (ab && (ab[2] < fb[0] || ab[0] > fb[2] || ab[3] < fb[1] || ab[1] > fb[3])) continue;
-    } catch (_) {}
+    const fb = geomBbox(f.geometry);
+    if (ab && fb && (ab[2] < fb[0] || ab[0] > fb[2] || ab[3] < fb[1] || ab[1] > fb[3])) continue;
+    const poly = f.geometry;
 
-    let poly = null;
-    try { poly = turf.feature(f.geometry); } catch (_) {}
-    if (!poly) continue;
-
-    if (alertFeat) {
-      try { if (turf.booleanIntersects(alertFeat, poly) || turf.booleanWithin(alertFeat, poly)) return true; } catch (_) {}
-      /** Vertex sampling — cobre alertas cuja geometria tem winding order inválido. */
+    if (alertGeom) {
+      try { if (geometriesIntersect(alertGeom, poly)) return true; } catch (_) {}
       try {
         const ring = firstRing(geojson);
         if (ring && sampleVerticesInsidePoly(ring, poly)) return true;
         const fRing = firstRing(f.geometry);
-        if (fRing && sampleVerticesInsidePoly(fRing, alertFeat)) return true;
+        if (fRing && sampleVerticesInsidePoly(fRing, alertGeom)) return true;
       } catch (_) {}
     }
     if (pt) {
-      try { if (turf.booleanPointInPolygon(pt, poly)) return true; } catch (_) {}
+      try { if (pointInGeom(pt, poly)) return true; } catch (_) {}
     }
   }
   return false;
@@ -681,6 +780,11 @@ async function getScanFromCache(startDate, endDate, email, forceRefresh) {
       scanCache.set(key, { expiresAt: Date.now() + SCAN_CACHE_TTL_MS, payload: hit });
       return hit;
     }
+  }
+
+  if (typeof getScanSeed === 'function' && String(startDate || '') <= '2020-01-01') {
+    const hit = acceptCachedPayload(getScanSeed());
+    if (hit) return hit;
   }
 
   return null;
