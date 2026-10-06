@@ -583,6 +583,7 @@ function drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH) {
   const px = (x, y) => [imgX + x * sx, imgY + y * sy];
   doc.save();
   try {
+    doc.rect(imgX, imgY, imgW, imgH).clip();
     if (typeof doc.fillOpacity === 'function') doc.fillOpacity(0.22);
     for (const shape of mapImg.shapes || []) {
       for (const ring of shape.rings || []) {
@@ -599,12 +600,100 @@ function drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH) {
       }
     }
     if (typeof doc.fillOpacity === 'function') doc.fillOpacity(1);
+    drawMapGrid(doc, mapImg, imgX, imgY, imgW, imgH, px);
     if (mapImg.pin) {
       const [x, y] = px(mapImg.pin.x, mapImg.pin.y);
-      doc.circle(x, y, 4.2).lineWidth(1.4).fillColor('#ffffff').strokeColor('#0ea5e9').fillAndStroke();
+      if (x >= imgX && x <= imgX + imgW && y >= imgY && y <= imgY + imgH) {
+        doc.circle(x, y, 4.2).lineWidth(1.4).fillColor('#ffffff').strokeColor('#0ea5e9').fillAndStroke();
+      }
     }
-    doc.lineWidth(1).strokeColor(NAVY).rect(imgX, imgY, imgW, imgH).stroke();
   } catch (_) {}
+  doc.restore();
+  doc.save();
+  doc.lineWidth(1).strokeColor(NAVY).rect(imgX, imgY, imgW, imgH).stroke();
+  doc.restore();
+  drawMapCompass(doc, imgX + imgW - 22, imgY + 26);
+  drawMapScale(doc, mapImg, imgX, imgY, imgW, imgH);
+  drawMapCoords(doc, mapImg, imgX, imgY, imgW, imgH, px);
+}
+
+function drawMapGrid(doc, mapImg, imgX, imgY, imgW, imgH, px) {
+  const decor = mapImg.decor || {};
+  doc.save();
+  doc.strokeColor('#ffffff').strokeOpacity(0.62).lineWidth(0.7);
+  for (const line of decor.vLines || []) {
+    const [x] = px(line.x, 0);
+    doc.moveTo(x, imgY).lineTo(x, imgY + imgH).stroke();
+  }
+  for (const line of decor.hLines || []) {
+    const [, y] = px(0, line.y);
+    doc.moveTo(imgX, y).lineTo(imgX + imgW, y).stroke();
+  }
+  doc.restore();
+}
+
+function drawVerticalLabel(doc, cx, cy, text) {
+  doc.save();
+  doc.font(doc._sans).fontSize(6.5).fillColor(NAVY);
+  const w = doc.widthOfString(text);
+  doc.translate(cx, cy);
+  doc.rotate(-90);
+  doc.text(text, -w / 2, -3, { lineBreak: false });
+  doc.restore();
+}
+
+function drawMapCoords(doc, mapImg, imgX, imgY, imgW, imgH, px) {
+  const decor = mapImg.decor || {};
+  doc.save();
+  doc.font(doc._sans).fontSize(6.5).fillColor(NAVY);
+  for (const line of decor.vLines || []) {
+    const [x] = px(line.x, 0);
+    const label = line.label;
+    const w = doc.widthOfString(label);
+    doc.text(label, x - w / 2, imgY - 9, { lineBreak: false });
+    doc.text(label, x - w / 2, imgY + imgH + 2, { lineBreak: false });
+  }
+  for (const line of decor.hLines || []) {
+    const [, y] = px(0, line.y);
+    drawVerticalLabel(doc, imgX - 8, y, line.label);
+    drawVerticalLabel(doc, imgX + imgW + 8, y, line.label);
+  }
+  doc.restore();
+}
+
+function drawMapCompass(doc, cx, cy) {
+  const r = 11;
+  doc.save();
+  doc.circle(cx, cy, r).lineWidth(0.8).fillColor('#ffffff').fillOpacity(0.92).strokeColor(NAVY).fillAndStroke();
+  doc.fillOpacity(1);
+  doc.moveTo(cx - 9, cy).lineTo(cx + 0.8, cy + 2.4).lineTo(cx + 2.2, cy).lineTo(cx + 0.8, cy - 2.4).closePath().fillColor('#cbd5e1').fill();
+  doc.moveTo(cx + 9, cy).lineTo(cx - 0.8, cy + 2.4).lineTo(cx - 2.2, cy).lineTo(cx - 0.8, cy - 2.4).closePath().fillColor('#cbd5e1').fill();
+  doc.moveTo(cx, cy + 9).lineTo(cx + 2.6, cy - 0.8).lineTo(cx, cy - 2.4).lineTo(cx - 2.6, cy - 0.8).closePath().fillColor('#94a3b8').fill();
+  doc.moveTo(cx, cy - 9).lineTo(cx + 2.6, cy + 0.8).lineTo(cx, cy + 2.4).lineTo(cx - 2.6, cy + 0.8).closePath().fillColor(NAVY).fill();
+  doc.circle(cx, cy, 1.7).fillColor(GOLD).fill();
+  doc.font(doc._sansBold || doc._sans).fontSize(7).fillColor(NAVY);
+  const nw = doc.widthOfString('N');
+  doc.text('N', cx - nw / 2, cy - r - 9, { lineBreak: false });
+  doc.restore();
+}
+
+function drawMapScale(doc, mapImg, imgX, imgY, imgW, imgH) {
+  const decor = mapImg.decor || {};
+  if (!decor.scaleLabel) return;
+  const barW = Math.max(28, Math.min(imgW * 0.36, (decor.scalePx / Math.max(mapImg.width, 1)) * imgW));
+  const x = imgX + imgW - barW - 8;
+  const y = imgY + imgH - 12;
+  doc.save();
+  doc.roundedRect(x - 6, y - 12, barW + 12, 18, 3).fillColor('#0f172a').fillOpacity(0.62).fill();
+  doc.fillOpacity(1).strokeColor('#ffffff').lineWidth(1.4);
+  doc.moveTo(x, y).lineTo(x + barW, y).stroke();
+  doc.lineWidth(1.1);
+  doc.moveTo(x, y - 3).lineTo(x, y + 3).stroke();
+  doc.moveTo(x + barW, y - 3).lineTo(x + barW, y + 3).stroke();
+  doc.moveTo(x + barW / 2, y - 2).lineTo(x + barW / 2, y + 2).stroke();
+  doc.font(doc._sans).fontSize(7).fillColor('#ffffff');
+  const w = doc.widthOfString(decor.scaleLabel);
+  doc.text(decor.scaleLabel, x + (barW - w) / 2, y - 11, { lineBreak: false });
   doc.restore();
 }
 
@@ -634,31 +723,37 @@ function drawMapa(doc, y, mapImg) {
   const title = 'RESULTADO VISUAL DA CONSULTA';
   const titleH = 22;
   if (mapImg?.png) {
+    const side = 20;
+    const bandTop = 12;
+    const bandBottom = 18;
     const ratio = mapImg.height / Math.max(mapImg.width, 1);
-    let imgW = CONTENT_W;
+    let imgW = CONTENT_W - side * 2;
     let imgH = imgW * ratio;
-    const gap = 8;
+    const gap = 6;
     const legendH = (mapImg.legend || []).length ? 18 : 0;
-    if (y + titleH + imgH + legendH + gap > PAGE_LIMIT) {
-      y = ensureSpace(doc, y, titleH + imgH + legendH + gap);
+    const blockH = titleH + bandTop + imgH + bandBottom + legendH + gap;
+    if (y + blockH > PAGE_LIMIT) {
+      y = ensureSpace(doc, y, blockH);
     }
-    const avail = PAGE_LIMIT - y - titleH - legendH - gap;
+    const avail = PAGE_LIMIT - y - titleH - bandTop - bandBottom - legendH - gap;
     if (imgH > avail) {
-      const scale = Math.max(avail, 160) / imgH;
+      const scale = Math.max(avail, 140) / imgH;
       imgH *= scale;
       imgW *= scale;
     }
     y = drawSectionTitle(doc, y, title);
     syncCursor(doc, y);
+    const imgX = MARGIN + side + (CONTENT_W - side * 2 - imgW) / 2;
+    const imgY = y + bandTop;
     try {
-      doc.image(mapImg.png, MARGIN, y, { width: imgW, height: imgH });
-      drawMapVectors(doc, mapImg, MARGIN, y, imgW, imgH);
+      doc.image(mapImg.png, imgX, imgY, { width: imgW, height: imgH });
+      drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH);
     } catch (_) {
       doc.fillColor(MUTED).font(doc._sans).fontSize(9)
         .text('Não foi possível inserir o mapa de satélite.', MARGIN, y, { lineBreak: false });
       imgH = 14;
     }
-    y += imgH + 6;
+    y = imgY + imgH + bandBottom;
     y = drawMapLegend(doc, y, mapImg.legend);
     y += gap;
     syncCursor(doc, y);

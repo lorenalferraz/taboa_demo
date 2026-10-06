@@ -460,7 +460,40 @@ async function renderSatelliteMap(opts = {}) {
     const [x, y] = toPx(Number(opts.point[0]), Number(opts.point[1]));
     if (Number.isFinite(x) && Number.isFinite(y)) pin = { x: x * scale, y: y * scale };
   }
-  return { png: jpeg, width: outW, height: outH, shapes, pin, legend };
+  return {
+    png: jpeg,
+    width: outW,
+    height: outH,
+    shapes,
+    pin,
+    legend,
+    decor: mapDecor(bbox, toPx, scale, outW, outH),
+  };
+}
+
+function mapDecor(bbox, toPx, scale, outW, outH) {
+  if (!bbox) return { vLines: [], hLines: [], scalePx: 48, scaleLabel: '' };
+  const [west, south, east, north] = bbox;
+  const vLines = [];
+  for (const lng of ticks(west, east, niceStep(east - west, 4))) {
+    const px = toPx(lng, north)[0] * scale;
+    if (px < 18 || px > outW - 18) continue;
+    vLines.push({ x: px, label: fmtDeg(lng, false) });
+  }
+  const hLines = [];
+  for (const lat of ticks(south, north, niceStep(north - south, 3))) {
+    const py = toPx(west, lat)[1] * scale;
+    if (py < 16 || py > outH - 16) continue;
+    hLines.push({ y: py, label: fmtDeg(lat, true) });
+  }
+  const midLat = (south + north) / 2;
+  const widthM = Math.max((east - west) * 111320 * Math.cos((midLat * Math.PI) / 180), 1);
+  const dist = niceDistance(widthM);
+  const scalePx = Math.max(36, Math.min(outW * 0.34, (dist / widthM) * outW));
+  const scaleLabel = dist >= 1000
+    ? `${String(dist / 1000).replace('.', ',')} km`
+    : `${dist} m`;
+  return { vLines, hLines, scalePx, scaleLabel };
 }
 
 exports.renderSatelliteMap = renderSatelliteMap;
