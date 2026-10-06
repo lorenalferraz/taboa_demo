@@ -1,6 +1,6 @@
 'use strict';
 
-const turf = require('@turf/turf');
+const { ringCentroid } = require('./geomLite');
 const {
   FAIXA_MUNICIPIOS,
   BY_IBGE,
@@ -15,7 +15,9 @@ const FAIXA_BBOX = [-40.85, -18.65, -37.15, -12.85];
 function featureCentroidInFaixa(feat) {
   if (!feat?.geometry) return false;
   try {
-    const [lng, lat] = turf.centroid(feat).geometry.coordinates;
+    const c = ringCentroid(feat.geometry);
+    if (!c) return false;
+    const [lng, lat] = c;
     return lng >= FAIXA_BBOX[0] && lng <= FAIXA_BBOX[2] && lat >= FAIXA_BBOX[1] && lat <= FAIXA_BBOX[3];
   } catch (_) {
     return false;

@@ -1,6 +1,6 @@
 'use strict';
 
-const turf = require('@turf/turf');
+const { geomBbox, pointInGeom, geometriesIntersect } = require('./geomLite');
 
 /**
  * Índice leve de feições municipais — bbox + feature turf cacheado.
@@ -12,8 +12,8 @@ function buildMunFeatureIndex(feats) {
     if (!f?.geometry) continue;
     let fb = null;
     let poly = null;
-    try { fb = turf.bbox(f.geometry); } catch (_) {}
-    try { poly = turf.feature(f.geometry); } catch (_) {}
+    try { fb = geomBbox(f.geometry); } catch (_) {}
+    poly = f.geometry;
     if (!poly) continue;
     items.push({ fb, poly });
   }
@@ -53,10 +53,10 @@ function alertHitsFeatureIndex(alert, index, ctx) {
     if (alertBbox && fb && !bboxesOverlap(alertBbox, fb)) continue;
 
     if (pt) {
-      try { if (turf.booleanPointInPolygon(pt, poly)) return true; } catch (_) {}
+      try { if (pointInGeom(pt, poly)) return true; } catch (_) {}
     }
     if (alertFeat) {
-      try { if (turf.booleanIntersects(alertFeat, poly)) return true; } catch (_) {}
+      try { if (geometriesIntersect(alertFeat, poly)) return true; } catch (_) {}
     }
   }
   return false;
@@ -68,9 +68,9 @@ function buildAlertGeomCtx(alert, alertGeometryAndPoint) {
   let alertBbox = null;
   let alertFeat = null;
   let pt = null;
-  try { if (geojson) alertBbox = turf.bbox(geojson); } catch (_) {}
-  try { alertFeat = geojson ? turf.feature(geojson) : null; } catch (_) {}
-  try { pt = point ? turf.point([point[1], point[0]]) : null; } catch (_) {}
+  try { if (geojson) alertBbox = geomBbox(geojson); } catch (_) {}
+  alertFeat = geojson || null;
+  pt = point ? [point[1], point[0]] : null;
   const ctx = { geojson, point, alertBbox, alertFeat, pt };
   alert._geomCtx = ctx;
   return ctx;
@@ -92,8 +92,8 @@ function buildFaixaFeatureIndex(feats) {
     if (!f?.geometry) continue;
     let fb = null;
     let poly = null;
-    try { fb = turf.bbox(f.geometry); } catch (_) {}
-    try { poly = turf.feature(f.geometry); } catch (_) {}
+    try { fb = geomBbox(f.geometry); } catch (_) {}
+    poly = f.geometry;
     if (!poly) continue;
     const p = f.properties || {};
     const munNome = String(p.nomMun || p.nm_mun || p.NM_MUN || p.municipio || '').trim();
@@ -120,10 +120,10 @@ function filterAlertsInFaixaIndex(collection, index, alertGeometryAndPoint) {
       if (ctx.alertBbox && fb && !bboxesOverlap(ctx.alertBbox, fb)) continue;
       let hits = false;
       if (ctx.pt) {
-        try { if (turf.booleanPointInPolygon(ctx.pt, poly)) hits = true; } catch (_) {}
+        try { if (pointInGeom(ctx.pt, poly)) hits = true; } catch (_) {}
       }
       if (!hits && ctx.alertFeat) {
-        try { if (turf.booleanIntersects(ctx.alertFeat, poly)) hits = true; } catch (_) {}
+        try { if (geometriesIntersect(ctx.alertFeat, poly)) hits = true; } catch (_) {}
       }
       if (!hits) continue;
       matched = true;

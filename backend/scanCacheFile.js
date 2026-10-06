@@ -70,14 +70,21 @@ function pruneScanFileCache(root) {
 }
 
 function getScanSeed() {
-  const file = path.join(__dirname, 'scan-seed', 'latest.json');
-  try {
-    if (!fs.existsSync(file)) return null;
-    const row = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return row?.payload || null;
-  } catch (_) {
-    return null;
+  const candidates = [
+    path.join(__dirname, 'scan-seed', 'latest.json'),
+    path.join(__dirname, 'backend', 'scan-seed', 'latest.json'),
+    path.join(process.cwd(), 'backend', 'scan-seed', 'latest.json'),
+    path.join(process.cwd(), 'scan-seed', 'latest.json'),
+    '/var/task/backend/scan-seed/latest.json',
+  ];
+  for (const file of candidates) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const row = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (row?.payload) return row.payload;
+    } catch (_) {}
   }
+  return null;
 }
 
 exports.getScanFromFileCache = getScanFromFileCache;
