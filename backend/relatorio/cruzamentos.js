@@ -1,7 +1,160 @@
 /**
  * Cruzamentos da área de consulta com camadas locais TABOA.
+ * Sem @turf/turf: na Vercel esse pacote quebra ao carregar kdbush (ESM).
  */
-const turf = require('@turf/turf');
+function asGeom(g) {
+  if (!g) return null;
+  if (g.type === 'Feature') return g.geometry || null;
+  if (g.geometry?.type) return g.geometry;
+  return g.type ? g : null;
+}
+
+function walkCoords(geom, fn) {
+  const g = asGeom(geom);
+  if (!g?.coordinates) return;
+  const t = g.type;
+  if (t === 'Point') fn(g.coordinates);
+  else if (t === 'MultiPoint' || t === 'LineString') g.coordinates.forEach(fn);
+  else if (t === 'MultiLineString' || t === 'Polygon') g.coordinates.forEach((r) => r.forEach(fn));
+  else if (t === 'MultiPolygon') g.coordinates.forEach((p) => p.forEach((r) => r.forEach(fn)));
+}
+
+function geomBbox(geom) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  walkCoords(geom, (c) => {
+    const x = Number(c[0]);
+    const y = Number(c[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  });
+  if (!Number.isFinite(minX)) return null;
+  return [minX, minY, maxX, maxY];
+}
+
+function ringAreaM2(ring) {
+  if (!ring || ring.length < 4) return 0;
+  const R = 6378137;
+  let sum = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const lng1 = Number(ring[i][0]) * Math.PI / 180;
+    const lat1 = Number(ring[i][1]) * Math.PI / 180;
+    const lng2 = Number(ring[i + 1][0]) * Math.PI / 180;
+    const lat2 = Number(ring[i + 1][1]) * Math.PI / 180;
+    sum += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs(sum * R * R / 2);
+}
+
+function geomAreaHa(geom) {
+  const g = asGeom(geom);
+  if (!g) return 0;
+  const polys = g.type === 'Polygon' ? [g.coordinates]
+    : g.type === 'MultiPolygon' ? g.coordinates
+      : null;
+  if (!polys) return 0;
+  let m2 = 0;
+  for (const rings of polys) {
+    if (!rings?.length) continue;
+    m2 += ringAreaM2(rings[0]);
+    for (let i = 1; i < rings.length; i++) m2 -= ringAreaM2(rings[i]);
+  }
+  return Math.max(0, m2 / 10000);
+}
+
+function pointInRing(pt, ring) {
+  const x = pt[0];
+  const y = pt[1];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0]);
+    const yi = Number(ring[i][1]);
+    const xj = Number(ring[j][0]);
+    const yj = Number(ring[j][1]);
+    const intersect = ((yi > y) !== (yj > y))
+      && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeom(pt, geom) {
+  const g = asGeom(geom);
+  if (!g) return false;
+  if (g.type === 'Point') {
+    return Math.abs(Number(g.coordinates[0]) - pt[0]) < 1e-8
+      && Math.abs(Number(g.coordinates[1]) - pt[1]) < 1e-8;
+  }
+  const polys = g.type === 'Polygon' ? [g.coordinates]
+    : g.type === 'MultiPolygon' ? g.coordinates
+      : null;
+  if (!polys) return false;
+  return polys.some((rings) => {
+    if (!rings?.[0] || !pointInRing(pt, rings[0])) return false;
+    for (let i = 1; i < rings.length; i++) {
+      if (pointInRing(pt, rings[i])) return false;
+    }
+    return true;
+  });
+}
+
+function sampleRing(ring, max) {
+  if (!ring || ring.length <= max) return ring || [];
+  const step = Math.ceil(ring.length / max);
+  const out = [];
+  for (let i = 0; i < ring.length; i += step) out.push(ring[i]);
+  return out;
+}
+
+function segmentsCross(a, b, c, d) {
+  const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = cross(a, b, c);
+  const d2 = cross(a, b, d);
+  const d3 = cross(c, d, a);
+  const d4 = cross(c, d, b);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function ringsOf(geom) {
+  const g = asGeom(geom);
+  if (!g) return [];
+  if (g.type === 'Polygon') return g.coordinates || [];
+  if (g.type === 'MultiPolygon') return (g.coordinates || []).flat();
+  if (g.type === 'LineString') return [g.coordinates];
+  if (g.type === 'MultiLineString') return g.coordinates || [];
+  return [];
+}
+
+function geometriesIntersect(a, b) {
+  const ga = asGeom(a);
+  const gb = asGeom(b);
+  if (!ga || !gb) return false;
+  if (!bboxesOverlap(geomBbox(ga), geomBbox(gb))) return false;
+  if (ga.type === 'Point') return pointInGeom(ga.coordinates, gb);
+  if (gb.type === 'Point') return pointInGeom(gb.coordinates, ga);
+  let inside = false;
+  walkCoords(ga, (c) => { if (!inside && pointInGeom(c, gb)) inside = true; });
+  if (inside) return true;
+  walkCoords(gb, (c) => { if (!inside && pointInGeom(c, ga)) inside = true; });
+  if (inside) return true;
+  const ra = ringsOf(ga).map((ring) => sampleRing(ring, 80));
+  const rb = ringsOf(gb).map((ring) => sampleRing(ring, 80));
+  for (const ringA of ra) {
+    for (let i = 0; i < ringA.length - 1; i++) {
+      for (const ringB of rb) {
+        for (let j = 0; j < ringB.length - 1; j++) {
+          if (segmentsCross(ringA[i], ringA[i + 1], ringB[j], ringB[j + 1])) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 function taboaShape() {
   const g = global.__TABOA_SHAPE__;
@@ -145,7 +298,7 @@ function areaReservaHa(feat) {
   const n = Number(feat?.properties?.AREA_DECLA);
   if (Number.isFinite(n) && n > 0) return n;
   try {
-    return turf.area(feat) / 10000;
+    return geomAreaHa(feat);
   } catch (_) {
     return 0;
   }
@@ -206,29 +359,70 @@ function asFeature(geom) {
   if (!geom) return null;
   if (geom.type === 'Feature') return geom;
   if (geom.geometry) return geom;
-  if (geom.type && geom.coordinates) return turf.feature(geom);
+  if (geom.type && geom.coordinates) return { type: 'Feature', properties: {}, geometry: geom };
   return null;
 }
 
 function clipAreaHa(aoiFeat, other) {
   try {
-    const inter = turf.intersect(turf.featureCollection([aoiFeat, other]));
-    if (!inter) return 0;
-    return turf.area(inter) / 10000;
+    const boxA = geomBbox(aoiFeat);
+    const boxB = geomBbox(other);
+    if (!boxA || !boxB || !bboxesOverlap(boxA, boxB)) return 0;
+    const box = [
+      Math.max(boxA[0], boxB[0]),
+      Math.max(boxA[1], boxB[1]),
+      Math.min(boxA[2], boxB[2]),
+      Math.min(boxA[3], boxB[3]),
+    ];
+    const n = 18;
+    let inside = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const lng = box[0] + ((box[2] - box[0]) * (i + 0.5)) / n;
+        const lat = box[1] + ((box[3] - box[1]) * (j + 0.5)) / n;
+        if (pointInGeom([lng, lat], aoiFeat) && pointInGeom([lng, lat], other)) inside += 1;
+      }
+    }
+    if (!inside) return 0;
+    return geomAreaHa({
+      type: 'Polygon',
+      coordinates: [[
+        [box[0], box[1]],
+        [box[2], box[1]],
+        [box[2], box[3]],
+        [box[0], box[3]],
+        [box[0], box[1]],
+      ]],
+    }) * (inside / (n * n));
   } catch (_) {
     return 0;
   }
 }
 
 function compactGeom(geom) {
-  if (!geom) return null;
+  const g = asGeom(geom);
+  if (!g) return null;
+  const round = (n) => Math.round(Number(n) * 1e5) / 1e5;
+  const slim = (ring) => {
+    const pts = sampleRing(ring, 240).map((c) => [round(c[0]), round(c[1])]);
+    if (pts.length >= 3) {
+      const a = pts[0];
+      const b = pts[pts.length - 1];
+      if (a[0] !== b[0] || a[1] !== b[1]) pts.push(a);
+    }
+    return pts;
+  };
   try {
-    let f = turf.feature(geom);
-    f = turf.truncate(f, { precision: 5, mutate: false });
-    f = turf.simplify(f, { tolerance: 0.00025, highQuality: false, mutate: false });
-    return f.geometry || geom;
+    if (g.type === 'Polygon') return { type: 'Polygon', coordinates: (g.coordinates || []).map(slim) };
+    if (g.type === 'MultiPolygon') {
+      return {
+        type: 'MultiPolygon',
+        coordinates: (g.coordinates || []).map((poly) => poly.map(slim)),
+      };
+    }
+    return g;
   } catch (_) {
-    return geom;
+    return g;
   }
 }
 
@@ -243,7 +437,7 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
   const hits = [];
   let areaHa = 0;
   let aoiHa = 0;
-  try { aoiHa = turf.area(aoiFeat) / 10000; } catch (_) {}
+  try { aoiHa = geomAreaHa(aoiFeat); } catch (_) {}
   const imoveisById = layer.id === 'reserva_legal' ? await loadImoveisById(aoiBbox) : null;
   for (const src of sources) {
     let fc;
@@ -255,11 +449,11 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
     for (const f of fc.features || []) {
       if (!f?.geometry) continue;
       let fb = null;
-      try { fb = turf.bbox(f); } catch (_) {}
+      try { fb = geomBbox(f); } catch (_) {}
       if (fb && !bboxesOverlap(fb, aoiBbox)) continue;
       let intersects = false;
       try {
-        intersects = turf.booleanIntersects(aoiFeat, f);
+        intersects = geometriesIntersect(aoiFeat, f);
       } catch (_) {
         continue;
       }
@@ -353,7 +547,7 @@ async function cruzarAreaConsulta(aoiGeom) {
     }));
   }
   let aoiBbox = null;
-  try { aoiBbox = turf.bbox(aoiFeat); } catch (_) {}
+  try { aoiBbox = geomBbox(aoiFeat); } catch (_) {}
   const out = [];
   for (const layer of LAYERS) {
     out.push(await cruzarCamada(aoiFeat, aoiBbox, layer));
@@ -371,15 +565,15 @@ async function identificarMunicipios(aoiGeom) {
     return [];
   }
   let aoiBbox = null;
-  try { aoiBbox = turf.bbox(aoiFeat); } catch (_) {}
+  try { aoiBbox = geomBbox(aoiFeat); } catch (_) {}
   const hits = [];
   for (const f of fc.features || []) {
     if (!f?.geometry) continue;
     let fb = null;
-    try { fb = turf.bbox(f); } catch (_) {}
+    try { fb = geomBbox(f); } catch (_) {}
     if (fb && aoiBbox && !bboxesOverlap(fb, aoiBbox)) continue;
     try {
-      if (!turf.booleanIntersects(aoiFeat, f)) continue;
+      if (!geometriesIntersect(aoiFeat, f)) continue;
     } catch (_) {
       continue;
     }
@@ -412,7 +606,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
   const aoiFeat = asFeature(aoiGeom);
   if (!aoiFeat?.geometry) return [];
   let aoiBbox = null;
-  try { aoiBbox = turf.bbox(aoiFeat); } catch (_) { return []; }
+  try { aoiBbox = geomBbox(aoiFeat); } catch (_) { return []; }
   const ides = new Set();
   for (const file of ['app.geojson', 'reserva_legal.geojson']) {
     let fc;
@@ -426,7 +620,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
       const ide = String(f.properties?.IDE_IMOVEL ?? '').trim();
       if (!ide) continue;
       try {
-        if (!turf.booleanIntersects(aoiFeat, f)) continue;
+        if (!geometriesIntersect(aoiFeat, f)) continue;
       } catch (_) {
         continue;
       }
@@ -463,7 +657,6 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     const lng = Number(Array.isArray(point) ? point[0] : point?.lng ?? point?.lon);
     const lat = Number(Array.isArray(point) ? point[1] : point?.lat);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
-    const pt = turf.point([lng, lat]);
     const pad = 0.003;
     const bbox = [lng - pad, lat - pad, lng + pad, lat + pad];
     let fc;
@@ -475,7 +668,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     for (const f of fc.features || []) {
       if (!f?.geometry) continue;
       try {
-        if (!turf.booleanPointInPolygon(pt, f)) continue;
+        if (!pointInGeom([lng, lat], f)) continue;
       } catch (_) {
         continue;
       }
@@ -488,8 +681,8 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
   if (!aoiFeat?.geometry) return [];
   let aoiBbox = null;
   let aoiHa = 0;
-  try { aoiBbox = turf.bbox(aoiFeat); } catch (_) {}
-  try { aoiHa = turf.area(aoiFeat) / 10000; } catch (_) {}
+  try { aoiBbox = geomBbox(aoiFeat); } catch (_) {}
+  try { aoiHa = geomAreaHa(aoiFeat); } catch (_) {}
   let fc;
   try {
     fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
@@ -501,10 +694,10 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
   for (const f of fc.features || []) {
     if (!f?.geometry) continue;
     let fb = null;
-    try { fb = turf.bbox(f); } catch (_) {}
+    try { fb = geomBbox(f); } catch (_) {}
     if (fb && aoiBbox && !bboxesOverlap(fb, aoiBbox)) continue;
     try {
-      if (!turf.booleanIntersects(aoiFeat, f)) continue;
+      if (!geometriesIntersect(aoiFeat, f)) continue;
     } catch (_) {
       continue;
     }
@@ -530,10 +723,17 @@ async function identificarRlAppDoImovel(imoveis) {
   let bbox = null;
   try {
     if (geoms.length) {
-      bbox = turf.bbox({
-        type: 'FeatureCollection',
-        features: geoms.map((g) => (g.type === 'Feature' ? g : turf.feature(g))),
-      });
+      bbox = geoms.reduce((acc, g) => {
+        const b = geomBbox(g);
+        if (!b) return acc;
+        if (!acc) return b;
+        return [
+          Math.min(acc[0], b[0]),
+          Math.min(acc[1], b[1]),
+          Math.max(acc[2], b[2]),
+          Math.max(acc[3], b[3]),
+        ];
+      }, null);
     }
   } catch (_) {}
   const pick = async (file) => {
