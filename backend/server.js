@@ -215,7 +215,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'relatorio-v10',
+      rev: 'relatorio-v11',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
@@ -596,7 +596,7 @@ const server = http.createServer((req, res) => {
     const probe = url.searchParams.get('probe') || '';
     if (probe === 'ping') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
-      res.end(JSON.stringify({ ok: true, probe: 'ping', rev: 'relatorio-v10' }));
+      res.end(JSON.stringify({ ok: true, probe: 'ping', rev: 'relatorio-v11' }));
       return;
     }
     handleConsultaRelatorioPdf(req, res, probe).catch((e) => {

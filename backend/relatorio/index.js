@@ -39,6 +39,10 @@ function sendJson(res, status, obj) {
 }
 
 async function runProbe(probe) {
+  if (probe === 'echo') return { ok: true, probe };
+  if (probe === 'req-pdf') return { ok: true, probe, t: typeof require('pdfkit') };
+  if (probe === 'req-sharp') return { ok: true, probe, t: typeof require('sharp') };
+  if (probe === 'req-turf') return { ok: true, probe, t: typeof require('@turf/turf') };
   if (probe === 'font') {
     const PDFDocument = require('pdfkit');
     const pdf = await new Promise((resolve, reject) => {
