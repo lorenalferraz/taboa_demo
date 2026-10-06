@@ -457,9 +457,10 @@ const server = http.createServer((req, res) => {
     const bbox = String(url.searchParams.get('bbox') || '').split(',').map(Number);
     const limitRaw = url.searchParams.get('limit');
     const limit = limitRaw == null || limitRaw === '' ? 0 : Number(limitRaw);
+    const forMap = String(url.searchParams.get('map') || '1') !== '0';
     (async () => {
       try {
-        const geojson = await loadFeaturesByBbox(file, bbox, limit, { map: true });
+        const geojson = await loadFeaturesByBbox(file, bbox, limit, { map: forMap });
         const feats = geojson.features || [];
         const acceptEnc = String(req.headers['accept-encoding'] || '');
         const useGzip = acceptEnc.includes('gzip');

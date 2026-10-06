@@ -393,8 +393,57 @@ function dadosImovelRural(feat) {
 }
 
 /**
+ * Imóveis cujo IDE_IMOVEL aparece numa APP ou reserva legal que cruza a área.
+ * Cobre o caso em que o ponto cai na APP/RL e o polígono do imóvel não contém o pino.
+ */
+async function imoveisLigadosARlApp(aoiGeom) {
+  const aoiFeat = asFeature(aoiGeom);
+  if (!aoiFeat?.geometry) return [];
+  let aoiBbox = null;
+  try { aoiBbox = turf.bbox(aoiFeat); } catch (_) { return []; }
+  const ides = new Set();
+  for (const file of ['app.geojson', 'reserva_legal.geojson']) {
+    let fc;
+    try {
+      fc = await loadFeaturesByBbox(file, aoiBbox, 0);
+    } catch (_) {
+      continue;
+    }
+    for (const f of fc.features || []) {
+      if (!f?.geometry) continue;
+      const ide = String(f.properties?.IDE_IMOVEL ?? '').trim();
+      if (!ide) continue;
+      try {
+        if (!turf.booleanIntersects(aoiFeat, f)) continue;
+      } catch (_) {
+        continue;
+      }
+      ides.add(ide);
+    }
+  }
+  if (!ides.size) return [];
+  let fc;
+  try {
+    fc = await loadFeaturesByBbox('imoveis_rurais.geojson', aoiBbox, 0);
+  } catch (_) {
+    return [];
+  }
+  const hits = [];
+  const seen = new Set();
+  for (const f of fc.features || []) {
+    if (!f?.geometry) continue;
+    const meta = dadosImovelRural(f);
+    if (!meta.ide || !ides.has(meta.ide) || seen.has(meta.ide)) continue;
+    seen.add(meta.ide);
+    hits.push({ ...meta, pct: null, geometry: f.geometry || null });
+  }
+  return hits;
+}
+
+/**
  * Imóvel(is) rurais para Informações cadastrais.
- * Ponto: só o polígono que contém a coordenada marcada (ignora o buffer).
+ * Ponto: o polígono que contém a coordenada. Se o pino não cair dentro de nenhum,
+ * usa o imóvel ligado à APP ou à reserva legal que cruza o buffer.
  * Polígono: todos os imóveis cruzados, com % da área analisada.
  */
 async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
@@ -409,7 +458,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     try {
       fc = await loadFeaturesByBbox('imoveis_rurais.geojson', bbox, 0);
     } catch (_) {
-      return [];
+      return imoveisLigadosARlApp(aoiGeom);
     }
     for (const f of fc.features || []) {
       if (!f?.geometry) continue;
@@ -420,7 +469,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
       }
       return [{ ...dadosImovelRural(f), pct: null, geometry: f.geometry || null }];
     }
-    return [];
+    return imoveisLigadosARlApp(aoiGeom);
   }
 
   const aoiFeat = asFeature(aoiGeom);
@@ -457,7 +506,8 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     hits.push({ ...meta, ha, pct, geometry: f.geometry || null });
   }
   hits.sort((a, b) => (b.pct || 0) - (a.pct || 0));
-  return hits;
+  if (hits.length) return hits;
+  return imoveisLigadosARlApp(aoiFeat);
 }
 
 async function identificarRlAppDoImovel(imoveis) {

@@ -648,7 +648,7 @@ async function buildConsultaPdf(raw = {}) {
   } catch (e) {
     console.error('Falha ao identificar imóvel rural no laudo:', e.message || e);
   }
-  const imoveisComCar = imoveisCadastro.filter((im) => String(im?.car || '').trim() && im.geometry);
+  const imoveisNoMapa = imoveisCadastro.filter((im) => im.geometry);
   let rlAppImovel = { rl: [], app: [] };
   try {
     rlAppImovel = await identificarRlAppDoImovel(imoveisCadastro);
@@ -660,9 +660,9 @@ async function buildConsultaPdf(raw = {}) {
       aoi: payload.aoi,
       clips: payload.clips,
       point: payload.point,
-      frameGeoms: imoveisComCar.map((im) => im.geometry),
+      frameGeoms: imoveisNoMapa.map((im) => im.geometry),
       overlays: [
-        ...imoveisComCar.map((im) => ({
+        ...imoveisNoMapa.map((im) => ({
           id: 'imovel_rural',
           legend: 'Imóvel rural',
           fill: '#facc15',
@@ -685,7 +685,9 @@ async function buildConsultaPdf(raw = {}) {
         })),
         ...cruzamentos.flatMap((c) => {
           if (!c.hit) return [];
-          if (c.id === 'reserva_legal' || c.id === 'app') return [];
+          const jaTemDoImovel = (c.id === 'reserva_legal' && rlAppImovel.rl?.length)
+            || (c.id === 'app' && rlAppImovel.app?.length);
+          if (jaTemDoImovel) return [];
           if (Array.isArray(c.overlays) && c.overlays.length) return c.overlays;
           return (c.geoms || []).map((geom) => ({
             id: c.id,

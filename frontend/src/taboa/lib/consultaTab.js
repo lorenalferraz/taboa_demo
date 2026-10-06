@@ -17,6 +17,8 @@ import { FAIXA_BBOX } from './faixaShapeNormalize.js';
 
 const AOI_STYLE = { color: '#0284c7', weight: 2, fillColor: '#38bdf8', fillOpacity: 0.18 };
 const IMOVEL_STYLE = { color: '#ca8a04', weight: 2, fillColor: '#facc15', fillOpacity: 0.16 };
+const APP_STYLE = { color: '#0e7490', weight: 1.6, fillColor: '#67e8f9', fillOpacity: 0.35 };
+const RL_STYLE = { color: '#166534', weight: 1.6, fillColor: '#86efac', fillOpacity: 0.35 };
 const DRAW_STYLE = { color: '#0284c7', weight: 2.2, dashArray: '10 7', fill: false, className: 'consulta-draw-line', interactive: false };
 const RUBBER_STYLE = { color: '#38bdf8', weight: 2, dashArray: '7 6', fill: false, className: 'consulta-draw-rubber', interactive: false };
 const CLOSE_STYLE = { color: '#0ea5e9', weight: 2, dashArray: '5 5', fill: false, className: 'consulta-draw-close', interactive: false };
@@ -91,47 +93,73 @@ function cadastroPessoa() {
   };
 }
 
-async function findImoveisComCar(built, geom) {
+async function fetchShapeInBbox(file, bbox) {
   const base = getApiBase();
-  if (!base || !built?.aoi || !geom) return [];
-  let bbox;
-  try {
-    if (geom.kind === 'point' && Number.isFinite(geom.lat) && Number.isFinite(geom.lng)) {
-      const pad = 0.003;
-      bbox = [geom.lng - pad, geom.lat - pad, geom.lng + pad, geom.lat + pad];
-    } else {
-      bbox = turf.bbox(built.aoi);
-    }
-  } catch (_) {
-    return [];
-  }
+  if (!base || !bbox) return [];
   const q = new URLSearchParams({
-    file: 'imoveis_rurais.geojson',
+    file,
     bbox: bbox.join(','),
     limit: '0',
+    map: '0',
   });
   const res = await fetch(`${String(base).replace(/\/$/, '')}/api/shape/features?${q}`, { cache: 'no-store' });
   if (!res.ok) return [];
   const data = await res.json().catch(() => null);
-  const feats = data?.geojson?.features || [];
-  const hits = [];
-  for (const f of feats) {
-    if (!f?.geometry) continue;
-    const car = String(f.properties?.NUMERO_CAR || '').trim();
-    if (!car) continue;
-    try {
-      if (geom.kind === 'point') {
-        if (!turf.booleanPointInPolygon(turf.point([geom.lng, geom.lat]), f)) continue;
-      } else if (!turf.booleanIntersects(built.aoi, f)) {
-        continue;
-      }
-    } catch (_) {
-      continue;
-    }
-    hits.push(f);
-    if (geom.kind === 'point') break;
+  return data?.geojson?.features || [];
+}
+
+function cruzaAoi(feat, aoi) {
+  if (!feat?.geometry || !aoi) return false;
+  try {
+    return turf.booleanIntersects(aoi, feat);
+  } catch (_) {
+    return false;
   }
-  return hits;
+}
+
+/**
+ * Imóvel sob o ponto, ou o imóvel da APP/reserva legal que cruza o buffer.
+ * APP e RL devolvidas são as que cruzam a área de análise, para desenhar no mapa.
+ */
+async function findTerritorioConsulta(built, geom) {
+  const empty = { imoveis: [], apps: [], rls: [] };
+  if (!built?.aoi || !geom) return empty;
+  let bbox;
+  try {
+    bbox = turf.bbox(built.aoi);
+  } catch (_) {
+    return empty;
+  }
+  const [imoveis, apps, rls] = await Promise.all([
+    fetchShapeInBbox('imoveis_rurais.geojson', bbox),
+    fetchShapeInBbox('app.geojson', bbox),
+    fetchShapeInBbox('reserva_legal.geojson', bbox),
+  ]);
+  const appsHit = apps.filter((f) => cruzaAoi(f, built.aoi));
+  const rlsHit = rls.filter((f) => cruzaAoi(f, built.aoi));
+  const ides = new Set();
+  for (const f of [...appsHit, ...rlsHit]) {
+    const ide = String(f.properties?.IDE_IMOVEL ?? '').trim();
+    if (ide) ides.add(ide);
+  }
+  let imoveisHit = [];
+  if (geom.kind === 'point' && Number.isFinite(geom.lat) && Number.isFinite(geom.lng)) {
+    const pt = turf.point([geom.lng, geom.lat]);
+    imoveisHit = imoveis.filter((f) => {
+      if (!f?.geometry) return false;
+      try {
+        return turf.booleanPointInPolygon(pt, f);
+      } catch (_) {
+        return false;
+      }
+    });
+  } else {
+    imoveisHit = imoveis.filter((f) => cruzaAoi(f, built.aoi));
+  }
+  if (!imoveisHit.length && ides.size) {
+    imoveisHit = imoveis.filter((f) => ides.has(String(f.properties?.IDE_IMOVEL ?? '').trim()));
+  }
+  return { imoveis: imoveisHit, apps: appsHit, rls: rlsHit };
 }
 
 function nowPtBr() {
@@ -773,26 +801,37 @@ export function setupConsultaTab(ctx) {
       clearPreview();
       clearResultLayers();
       const map = liveMap();
+      let territorio = { imoveis: [], apps: [], rls: [] };
+      try {
+        territorio = await findTerritorioConsulta(built, geometry);
+      } catch (_) {}
+      if (myGen !== runGeneration) return;
       const layers = [L.geoJSON(built.aoi, { style: () => AOI_STYLE })];
-      if (geometry.kind === 'point' && Number.isFinite(geometry.lat) && Number.isFinite(geometry.lng)) {
-        layers.push(L.marker([geometry.lat, geometry.lng], { icon: getPinIcon() }));
-      }
+      territorio.imoveis.forEach((feat) => {
+        layers.push(L.geoJSON(feat, { style: () => IMOVEL_STYLE }));
+      });
+      territorio.rls.forEach((feat) => {
+        layers.push(L.geoJSON(feat, { style: () => RL_STYLE }));
+      });
+      territorio.apps.forEach((feat) => {
+        layers.push(L.geoJSON(feat, { style: () => APP_STYLE }));
+      });
       alertGeoms.forEach((geom) => {
         layers.push(L.geoJSON(geom, { style: () => CLIP_STYLE }));
       });
-      let imoveisCar = [];
-      try {
-        imoveisCar = await findImoveisComCar(built, geometry);
-      } catch (_) {}
-      if (myGen !== runGeneration) return;
-      imoveisCar.forEach((feat) => {
-        layers.push(L.geoJSON(feat, { style: () => IMOVEL_STYLE }));
-      });
+      if (geometry.kind === 'point' && Number.isFinite(geometry.lat) && Number.isFinite(geometry.lng)) {
+        layers.push(L.marker([geometry.lat, geometry.lng], { icon: getPinIcon() }));
+      }
       if (map) {
         resultGroup = L.layerGroup(layers).addTo(map);
         try {
-          const frame = imoveisCar.length
-            ? L.geoJSON({ type: 'FeatureCollection', features: imoveisCar })
+          const frameFeats = [
+            ...territorio.imoveis,
+            ...territorio.rls,
+            ...territorio.apps,
+          ];
+          const frame = frameFeats.length
+            ? L.geoJSON({ type: 'FeatureCollection', features: frameFeats })
             : L.geoJSON(built.aoi);
           const b = frame.getBounds();
           if (b.isValid()) map.fitBounds(b, { maxZoom: 17, padding: [28, 28] });
