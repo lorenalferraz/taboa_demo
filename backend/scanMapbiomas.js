@@ -557,13 +557,32 @@ function pickShapeFilename(filenames) {
   return null;
 }
 
+function featureCollectionBbox(features) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  function walk(c) {
+    if (Array.isArray(c) && typeof c[0] === 'number') {
+      if (c[0] < minX) minX = c[0];
+      if (c[1] < minY) minY = c[1];
+      if (c[0] > maxX) maxX = c[0];
+      if (c[1] > maxY) maxY = c[1];
+      return;
+    }
+    if (Array.isArray(c)) c.forEach(walk);
+  }
+  for (const f of features || []) walk(f?.geometry?.coordinates);
+  if (!Number.isFinite(minX)) return null;
+  return [minX, minY, maxX, maxY];
+}
+
 function groupFaixaFeaturesByMunicipio(features) {
-  const { normMunNome } = require('./municipios');
   const byKey = new Map();
   for (const feat of features || []) {
     const ibge = feat.properties?.codMun ?? feat.properties?.cd_mun ?? feat.properties?.codigo;
     const nm = feat.properties?.nomMun ?? feat.properties?.nm_mun ?? feat.properties?.NM_MUN ?? '';
-    const key = ibge ? String(ibge) : normMunNome(nm);
+    const key = ibge ? String(ibge) : String(nm || '').trim().toLowerCase();
     if (!key) continue;
     if (!byKey.has(key)) {
       byKey.set(key, {
@@ -577,11 +596,8 @@ function groupFaixaFeaturesByMunicipio(features) {
   }
   const out = [];
   for (const g of byKey.values()) {
-    try {
-      g.munBbox = turf.bbox(turf.featureCollection(g.feats));
-    } catch (_) {
-      continue;
-    }
+    g.munBbox = featureCollectionBbox(g.feats);
+    if (!g.munBbox) continue;
     out.push(g);
   }
   out.sort((a, b) => a.munNome.localeCompare(b.munNome, 'pt-BR'));
