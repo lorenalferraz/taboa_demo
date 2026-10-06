@@ -103,9 +103,7 @@ async function fetchIncraLayerByBbox(layerBase, uf, bbox, opts = {}) {
 /** Alias usado pelos consumidores existentes. */
 const fetchIncraWfsByBbox = fetchIncraLayerByBbox;
 
-module.exports = {
-  fetchIncraLayerByBbox,
-  fetchIncraWfsByBbox,
-  KNOWN_LAYERS: [...KNOWN_LAYERS],
-  LOCAL_INCRA_LAYERS: Object.keys(LOCAL_INCRA_LAYERS),
-};
+exports.fetchIncraLayerByBbox = fetchIncraLayerByBbox;
+exports.fetchIncraWfsByBbox = fetchIncraWfsByBbox;
+exports.KNOWN_LAYERS = [...KNOWN_LAYERS];
+exports.LOCAL_INCRA_LAYERS = Object.keys(LOCAL_INCRA_LAYERS);

@@ -584,19 +584,17 @@ async function loadFeaturesByBbox(filename, bbox, limit = 0, opts = {}) {
   };
 }
 
-module.exports = {
-  SHAPE_DIR,
-  MUNICIPIOS_FILE,
-  ASSENTAMENTOS_FILE,
-  ALERTAS_FILE,
-  loadGeoJsonFile,
-  loadFaixaShapeGeoJson,
-  loadAssentamentosFeatures,
-  filterFeaturesByBbox,
-  loadFeaturesByBbox,
-  municipioPorCoordenadaForApi,
-  municipiosPorCoordenadasForApi,
-  ensureImoveisCatalog,
-  searchImoveisRurais,
-  getImovelByIndex,
-};
+exports.SHAPE_DIR = SHAPE_DIR;
+exports.MUNICIPIOS_FILE = MUNICIPIOS_FILE;
+exports.ASSENTAMENTOS_FILE = ASSENTAMENTOS_FILE;
+exports.ALERTAS_FILE = ALERTAS_FILE;
+exports.loadGeoJsonFile = loadGeoJsonFile;
+exports.loadFaixaShapeGeoJson = loadFaixaShapeGeoJson;
+exports.loadAssentamentosFeatures = loadAssentamentosFeatures;
+exports.filterFeaturesByBbox = filterFeaturesByBbox;
+exports.loadFeaturesByBbox = loadFeaturesByBbox;
+exports.municipioPorCoordenadaForApi = municipioPorCoordenadaForApi;
+exports.municipiosPorCoordenadasForApi = municipiosPorCoordenadasForApi;
+exports.ensureImoveisCatalog = ensureImoveisCatalog;
+exports.searchImoveisRurais = searchImoveisRurais;
+exports.getImovelByIndex = getImovelByIndex;

@@ -2,7 +2,16 @@
  * Cruzamentos da área de consulta com camadas locais TABOA.
  */
 const turf = require('@turf/turf');
-const { loadGeoJsonFile, loadFeaturesByBbox } = require('../localShapeLoader');
+const localShape = require('../localShapeLoader');
+
+function shapeFn(name) {
+  const mod = localShape && typeof localShape[name] === 'function'
+    ? localShape
+    : (localShape && localShape.default) || {};
+  const fn = mod[name];
+  if (typeof fn !== 'function') throw new Error(`${name} is not a function`);
+  return fn;
+}
 
 const UC_SOURCES = [
   {
@@ -142,7 +151,7 @@ function areaReservaHa(feat) {
 async function loadImoveisById(aoiBbox) {
   const map = new Map();
   try {
-    const fc = await loadFeaturesByBbox('imoveis_rurais.geojson', aoiBbox, 0);
+    const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
     for (const f of fc.features || []) {
       const p = f.properties || {};
       const ide = p.IDE_IMOVEL != null ? String(p.IDE_IMOVEL).trim() : '';
@@ -236,7 +245,7 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
   for (const src of sources) {
     let fc;
     try {
-      fc = await loadFeaturesByBbox(src.file, aoiBbox, 0);
+      fc = await shapeFn('loadFeaturesByBbox')(src.file, aoiBbox, 0);
     } catch (_) {
       continue;
     }
@@ -354,7 +363,7 @@ async function identificarMunicipios(aoiGeom) {
   if (!aoiFeat?.geometry) return [];
   let fc;
   try {
-    fc = await loadGeoJsonFile('municipios.geojson');
+    fc = await shapeFn('loadGeoJsonFile')('municipios.geojson');
   } catch (_) {
     return [];
   }
@@ -405,7 +414,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
   for (const file of ['app.geojson', 'reserva_legal.geojson']) {
     let fc;
     try {
-      fc = await loadFeaturesByBbox(file, aoiBbox, 0);
+      fc = await shapeFn('loadFeaturesByBbox')(file, aoiBbox, 0);
     } catch (_) {
       continue;
     }
@@ -424,7 +433,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
   if (!ides.size) return [];
   let fc;
   try {
-    fc = await loadFeaturesByBbox('imoveis_rurais.geojson', aoiBbox, 0);
+    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
   } catch (_) {
     return [];
   }
@@ -456,7 +465,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     const bbox = [lng - pad, lat - pad, lng + pad, lat + pad];
     let fc;
     try {
-      fc = await loadFeaturesByBbox('imoveis_rurais.geojson', bbox, 0);
+      fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', bbox, 0);
     } catch (_) {
       return imoveisLigadosARlApp(aoiGeom);
     }
@@ -480,7 +489,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
   try { aoiHa = turf.area(aoiFeat) / 10000; } catch (_) {}
   let fc;
   try {
-    fc = await loadFeaturesByBbox('imoveis_rurais.geojson', aoiBbox, 0);
+    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
   } catch (_) {
     return [];
   }
@@ -527,7 +536,7 @@ async function identificarRlAppDoImovel(imoveis) {
   const pick = async (file) => {
     let fc;
     try {
-      fc = await loadFeaturesByBbox(file, bbox, 0);
+      fc = await shapeFn('loadFeaturesByBbox')(file, bbox, 0);
     } catch (_) {
       return [];
     }

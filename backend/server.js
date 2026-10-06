@@ -2,19 +2,18 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { fetchIncraLayerByBbox } = require('./assentamentos');
-const {
-  municipioPorCoordenadaForApi,
-  municipiosPorCoordenadasForApi,
-  loadFeaturesByBbox,
-  searchImoveisRurais,
-  getImovelByIndex,
-  ensureImoveisCatalog,
-} = require('./localShapeLoader');
+const assentamentosApi = require('./assentamentos');
+const localShape = require('./localShapeLoader');
 const { pruneScanFileCache } = require('./scanCacheFile');
 const { handleConsultaRelatorioPdf } = require('./relatorio');
 
 const PORT = process.env.PORT || 3000;
+
+function fromMod(mod, name) {
+  if (mod && typeof mod[name] === 'function') return mod[name];
+  if (mod && mod.default && typeof mod.default[name] === 'function') return mod.default[name];
+  throw new Error(`${name} is not a function`);
+}
 
 /** Lê o módulo de varredura na hora do pedido. Desestruturar no topo perde a função na Vercel. */
 function scanApi() {
@@ -335,7 +334,7 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ ok: false, error: 'Parâmetros lat e lng são obrigatórios (WGS84).' }));
         return;
       }
-      const out = await municipioPorCoordenadaForApi(lat, lng);
+      const out = await fromMod(localShape, 'municipioPorCoordenadaForApi')(lat, lng);
       let status = 200;
       if (!out.ok) {
         if (out.error && (out.error.includes('inválid') || out.error.includes('obrigat') || out.error.includes('fora'))) {
@@ -367,7 +366,7 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ ok: false, error: 'JSON inválido no corpo do pedido.' }));
         return;
       }
-      const out = await municipiosPorCoordenadasForApi(body.points || []);
+      const out = await fromMod(localShape, 'municipiosPorCoordenadasForApi')(body.points || []);
       res.writeHead(out.ok ? 200 : 400, { 'Content-Type': 'application/json', ...CORS_HEADERS });
       res.end(JSON.stringify(out));
     })().catch((e) => {
@@ -437,7 +436,7 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ ok: false, error: 'Parâmetro bbox obrigatório: west,south,east,north' }));
         return;
       }
-      const result = await fetchIncraLayerByBbox(layer, uf, parts, { municipioNome: municipio });
+      const result = await fromMod(assentamentosApi, 'fetchIncraLayerByBbox')(layer, uf, parts, { municipioNome: municipio });
       if (!result.ok) {
         res.writeHead(502, { 'Content-Type': 'application/json', ...CORS_HEADERS });
         res.end(JSON.stringify({ ok: false, error: result.error, typeName: result.typeName || null }));
@@ -475,7 +474,7 @@ const server = http.createServer((req, res) => {
     const forMap = String(url.searchParams.get('map') || '1') !== '0';
     (async () => {
       try {
-        const geojson = await loadFeaturesByBbox(file, bbox, limit, { map: forMap });
+        const geojson = await fromMod(localShape, 'loadFeaturesByBbox')(file, bbox, limit, { map: forMap });
         const feats = geojson.features || [];
         const acceptEnc = String(req.headers['accept-encoding'] || '');
         const useGzip = acceptEnc.includes('gzip');
@@ -514,7 +513,7 @@ const server = http.createServer((req, res) => {
     const q = String(url.searchParams.get('q') || '');
     const municipio = String(url.searchParams.get('municipio') || '');
     const limit = Number(url.searchParams.get('limit') || 40);
-    searchImoveisRurais({ q, municipio, limit }).then((result) => {
+    fromMod(localShape, 'searchImoveisRurais')({ q, municipio, limit }).then((result) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
       res.end(JSON.stringify({ ok: true, ...result }));
     }).catch((e) => {
@@ -528,7 +527,7 @@ const server = http.createServer((req, res) => {
   if (targetPath === '/api/shape/imovel' && req.method === 'GET') {
     const i = Number(url.searchParams.get('i'));
     try {
-      const feature = getImovelByIndex(i);
+      const feature = fromMod(localShape, 'getImovelByIndex')(i);
       if (!feature) {
         res.writeHead(404, { 'Content-Type': 'application/json', ...CORS_HEADERS });
         res.end(JSON.stringify({ ok: false, error: 'Imóvel não encontrado.' }));
@@ -566,7 +565,7 @@ server.listen(PORT, () => {
   if (pruned > 0) console.log(`Cache scan: ${pruned} arquivo(s) antigo(s) removido(s).`);
   console.log(`Backend local em http://127.0.0.1:${PORT}`);
   console.log(`Shape indexado: ${count} arquivo(s) .geojson`);
-  ensureImoveisCatalog()
+  fromMod(localShape, 'ensureImoveisCatalog')()
     .then((items) => console.log(`Catálogo de imóveis rurais: ${items.length} CAR(s).`))
     .catch((e) => console.warn('Catálogo de imóveis:', e.message || e));
 });

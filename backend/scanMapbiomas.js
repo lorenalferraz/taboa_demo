@@ -3,7 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 const turf = require('@turf/turf');
-const proj4 = require('proj4');
+const proj4pkg = require('proj4');
+const proj4 = typeof proj4pkg === 'function' ? proj4pkg : (proj4pkg && proj4pkg.default) || proj4pkg;
 
 const MAPBIOMAS_ALERT_COLLECTION_GQL = `
   alertCode
@@ -95,18 +96,75 @@ function inferCrsFromCoordinates(g) {
   return null;
 }
 
+function utmZoneFromEpsg(code) {
+  const n = Number(String(code || '').replace(/\D/g, ''));
+  const south = { 31978: 18, 31979: 19, 31980: 20, 31981: 21, 31982: 22, 31983: 23, 31984: 24, 32718: 18, 32719: 19, 32720: 20, 32721: 21, 32722: 22, 32723: 23, 32724: 24 };
+  const north = { 32618: 18, 32619: 19, 32620: 20, 32621: 21, 32622: 22, 32623: 23, 32624: 24 };
+  if (south[n]) return { zone: south[n], south: true };
+  if (north[n]) return { zone: north[n], south: false };
+  return { zone: 24, south: true };
+}
+
+/** UTM → WGS84 sem proj4. A Vercel às vezes não aplica o proj4 empacotado. */
+function utmToLonLat(easting, northing, zone, south) {
+  const a = 6378137.0;
+  const f = 1 / 298.257222101;
+  const k0 = 0.9996;
+  const e2 = f * (2 - f);
+  const ep2 = e2 / (1 - e2);
+  const x = easting - 500000;
+  let y = northing;
+  if (south) y -= 10000000;
+  const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+  const M = y / k0;
+  const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * Math.pow(e2, 3) / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const fp = mu
+    + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu)
+    + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu)
+    + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu)
+    + (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+  const C1 = ep2 * Math.cos(fp) * Math.cos(fp);
+  const T1 = Math.tan(fp) * Math.tan(fp);
+  const N1 = a / Math.sqrt(1 - e2 * Math.sin(fp) * Math.sin(fp));
+  const R1 = a * (1 - e2) / Math.pow(1 - e2 * Math.sin(fp) * Math.sin(fp), 1.5);
+  const D = x / (N1 * k0);
+  const lat = fp - (N1 * Math.tan(fp) / R1) * (
+    D * D / 2
+    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24
+    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6) / 720
+  );
+  const lon = lon0 + (
+    D
+    - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6
+    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5) / 120
+  ) / Math.cos(fp);
+  return [lon * 180 / Math.PI, lat * 180 / Math.PI];
+}
+
 function reprojectToWGS84(geojson, sourceCrs) {
   if (!geojson?.features) return geojson;
   const fromCrs = sourceCrs || parseCrsFromGeoJSON(geojson) || 'EPSG:31984';
   const geoGraphic = new Set(['EPSG:4326', 'EPSG:4674', 'EPSG:4979']);
   if (geoGraphic.has(fromCrs)) return geojson;
-  function transformCoord(c) {
-    if (Array.isArray(c) && typeof c[0] === 'number') {
-      try {
-        const p = proj4(fromCrs, 'EPSG:4326', [c[0], c[1]]);
-        return Array.isArray(p) ? p : [p.x, p.y];
-      } catch (_) { return c; }
+  const zone = utmZoneFromEpsg(fromCrs);
+  function asLonLat(x, y) {
+    let out = null;
+    try {
+      if (typeof proj4 === 'function') {
+        const p = proj4(fromCrs, 'EPSG:4326', [x, y]);
+        out = Array.isArray(p) ? p : [p.x, p.y];
+      }
+    } catch (_) {
+      out = null;
     }
+    if (!out || Math.abs(out[0]) > 180 || Math.abs(out[1]) > 90) {
+      out = utmToLonLat(x, y, zone.zone, zone.south);
+    }
+    return out;
+  }
+  function transformCoord(c) {
+    if (Array.isArray(c) && typeof c[0] === 'number') return asLonLat(c[0], c[1]);
     return c.map(transformCoord);
   }
   return {
