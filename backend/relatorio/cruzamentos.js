@@ -2,15 +2,18 @@
  * Cruzamentos da área de consulta com camadas locais TABOA.
  */
 const turf = require('@turf/turf');
-const localShape = require('../localShapeLoader');
+
+function taboaShape() {
+  const g = global.__TABOA_SHAPE__;
+  if (g && typeof g.loadFeaturesByBbox === 'function') return g;
+  return require('../localShapeLoader');
+}
 
 function shapeFn(name) {
-  const mod = localShape && typeof localShape[name] === 'function'
-    ? localShape
-    : (localShape && localShape.default) || {};
-  const fn = mod[name];
-  if (typeof fn !== 'function') throw new Error(`${name} is not a function`);
-  return fn;
+  const mod = taboaShape();
+  const fn = mod && (mod[name] || (mod.default && mod.default[name]));
+  if (typeof fn === 'function') return fn;
+  throw new Error(`${name} is not a function`);
 }
 
 const UC_SOURCES = [

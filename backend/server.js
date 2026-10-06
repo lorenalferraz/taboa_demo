@@ -3,7 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const assentamentosApi = require('./assentamentos');
-const localShape = require('./localShapeLoader');
+const loadedShape = require('./localShapeLoader');
+const localShape = global.__TABOA_SHAPE__ && typeof global.__TABOA_SHAPE__.loadFeaturesByBbox === 'function'
+  ? global.__TABOA_SHAPE__
+  : loadedShape;
 const { pruneScanFileCache } = require('./scanCacheFile');
 const { handleConsultaRelatorioPdf } = require('./relatorio');
 
@@ -185,7 +188,13 @@ const server = http.createServer((req, res) => {
   // GET /api/health — verificação leve (sem I/O pesado)
   if (targetPath === '/api/health' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
-    res.end(JSON.stringify({ ok: true, service: 'taboa-backend', rev: 'faixa-v4', ts: Date.now() }));
+    res.end(JSON.stringify({
+      ok: true,
+      service: 'taboa-backend',
+      rev: 'faixa-v5',
+      shape: typeof localShape.loadFeaturesByBbox,
+      ts: Date.now(),
+    }));
     return;
   }
 
