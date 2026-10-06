@@ -188,9 +188,13 @@ function prepareShapeFC(raw) {
   const geoGraphic = new Set(['EPSG:4326', 'EPSG:4674', 'EPSG:4979']);
   const needsReproject = sourceCrs && !geoGraphic.has(sourceCrs);
   if (needsReproject) fg = reprojectToWGS84(fg, sourceCrs);
-  fg = normalizeFaixaShapeGeoJSON(fg);
-  if (!fg?.features?.length) return null;
-  return fg;
+  const normalized = normalizeFaixaShapeGeoJSON(fg);
+  if (normalized?.features?.length) return normalized;
+  const sample = sampleFirstCoordinate(fg);
+  const inDegrees = sample && Math.abs(sample[0]) <= 180 && Math.abs(sample[1]) <= 90;
+  if (inDegrees && fg?.features?.length) return fg;
+  const err = new Error(`faixa-v3 sem feições (origem ${raw?.features?.length || 0}, amostra ${JSON.stringify(sample)})`);
+  throw err;
 }
 
 function wktToGeoJSON(wkt) {
