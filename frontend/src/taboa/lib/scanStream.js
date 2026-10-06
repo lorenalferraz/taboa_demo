@@ -9,8 +9,6 @@
 export async function consumeScanAlertsStream(o) {
   const {
     apiBase,
-    email,
-    password,
     startDate,
     endDate,
     selectedIndices,
@@ -25,8 +23,6 @@ export async function consumeScanAlertsStream(o) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email,
-      password,
       startDate,
       endDate,
       selectedIndices: selectedIndices == null ? null : [...selectedIndices],

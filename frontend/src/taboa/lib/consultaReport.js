@@ -31,7 +31,7 @@ export function formatPctPtBr(value, decimals = 1) {
  */
 export function buildConsultaReportHtml(opts = {}) {
   const miss = opts.noAlertsLoaded
-    ? '<p class="consulta-result-msg">Não há alertas carregados. Faça o login para varrer os alertas e consulte novamente.</p>'
+    ? '<p class="consulta-result-msg">Não há alertas carregados. Aguarde a varredura e consulte novamente.</p>'
     : '';
   return `
     ${miss}

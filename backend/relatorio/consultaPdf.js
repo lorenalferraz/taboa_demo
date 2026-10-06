@@ -3,6 +3,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+require('./pdfkitFonts');
 const PDFDocument = require('pdfkit');
 const { renderSatelliteMap } = require('./mapaSatelite');
 const { cruzarAreaConsulta, identificarMunicipios, identificarImoveisCadastrais, identificarRlAppDoImovel } = require('./cruzamentos');

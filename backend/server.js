@@ -2,7 +2,6 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { runScan } = require('./scanMapbiomas');
 const { fetchIncraLayerByBbox } = require('./assentamentos');
 const {
   municipioPorCoordenadaForApi,
@@ -12,11 +11,18 @@ const {
   getImovelByIndex,
   ensureImoveisCatalog,
 } = require('./localShapeLoader');
-const { loadFaixaShapeFromDir } = require('./scanMapbiomas');
 const { pruneScanFileCache } = require('./scanCacheFile');
 const { handleConsultaRelatorioPdf } = require('./relatorio');
 
 const PORT = process.env.PORT || 3000;
+
+/** Lê o módulo de varredura na hora do pedido. Desestruturar no topo perde a função na Vercel. */
+function scanApi() {
+  const loaded = require('./scanMapbiomas');
+  if (loaded && typeof loaded.runScan === 'function') return loaded;
+  if (loaded && loaded.default && typeof loaded.default.runScan === 'function') return loaded.default;
+  return loaded || {};
+}
 
 // Root = pasta backend
 const ROOT = __dirname;
@@ -202,7 +208,12 @@ const server = http.createServer((req, res) => {
       };
       const shapeDir = path.join(ROOT, 'shape');
       try {
-        await runScan(shapeDir, body, send);
+        const runScan = scanApi().runScan;
+        if (typeof runScan !== 'function') {
+          send({ type: 'error', message: 'Varredura de alertas indisponível neste servidor.' });
+        } else {
+          await runScan(shapeDir, body, send);
+        }
       } catch (e) {
         send({ type: 'error', message: String(e.message || e) });
       } finally {
@@ -245,6 +256,10 @@ const server = http.createServer((req, res) => {
   if (targetPath === '/api/faixa/geojson' && req.method === 'GET') {
     (async () => {
       try {
+        const loadFaixaShapeFromDir = scanApi().loadFaixaShapeFromDir;
+        if (typeof loadFaixaShapeFromDir !== 'function') {
+          throw new Error('loadFaixaShapeFromDir is not a function');
+        }
         const loaded = await loadFaixaShapeFromDir(null);
         if (!loaded) {
           res.writeHead(404, { 'Content-Type': 'application/json', ...CORS_HEADERS });

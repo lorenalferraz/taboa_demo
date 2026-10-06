@@ -600,13 +600,6 @@ export default function App() {
         </div>
       </div>
 
-      <div hidden>
-        <input type="email" id="email" autoComplete="email" />
-        <input type="password" id="password" autoComplete="current-password" />
-        <button type="button" id="btnLogin" />
-        <button type="button" id="btnLoginCancel" />
-      </div>
-
     </div>
   );
 }

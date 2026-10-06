@@ -50,7 +50,7 @@ import { groupFaixaFeaturesByMunicipio } from './lib/faixaScanUtils.js';
 import { normalizeFaixaShapeGeoJSON } from './lib/faixaShapeNormalize.js';
 import { pickShapeFilename } from './lib/shapePick.js';
 import { applyLightTheme } from './lib/theme.js';
-import { loadCreds, saveCreds, clearCreds } from './lib/credentials.js';
+import { clearCreds } from './lib/credentials.js';
 import { isFaixaAlertsMode, buildFaixaAnalytics, renderFaixaAnalyticsHtml } from './lib/analyticsPanel.js';
 import { yieldToMain } from './lib/yieldToMain.js';
 import {
@@ -365,13 +365,7 @@ export function bootstrapTaboa() {
       }
     }
 
-    function showLogin() {
-      const c = loadCreds();
-      const emailEl = document.getElementById('email');
-      const passEl = document.getElementById('password');
-      if (c && emailEl) emailEl.value = c.email || '';
-      if (c && passEl) passEl.value = c.password || '';
-    }
+    function showLogin() {}
 
     function hideLogin() {}
 
@@ -987,7 +981,7 @@ export function bootstrapTaboa() {
       if (ok && faixaPlanejamentoGeoJSON) {
         processAndDisplayGeoJSON(faixaPlanejamentoGeoJSON);
       }
-      setStatus('✓ Pronto. Faça login para varrer alertas MapBiomas na faixa 05/06/07.');
+      setStatus('✓ Pronto. Varrendo alertas MapBiomas na faixa 05/06/07.');
       return ok;
     }
 
@@ -1002,7 +996,7 @@ export function bootstrapTaboa() {
         processAndDisplayGeoJSON(faixaPlanejamentoGeoJSON);
       }
       await loadDeferredShapeAssets();
-      setStatus('✓ Pronto. Faça login para varrer alertas MapBiomas na faixa 05/06/07.');
+      setStatus('✓ Pronto. Varrendo alertas MapBiomas na faixa 05/06/07.');
       return ok;
     }
 
@@ -2349,18 +2343,11 @@ export function bootstrapTaboa() {
     }
 
     async function runLoadAlertsJob({ forceRefresh = false } = {}) {
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
       syncPeriodInputs();
       let startDate = document.getElementById('startDate').value;
       let endDate = document.getElementById('endDate').value;
       if (!startDate) startDate = '2020-01-01';
       if (!endDate) endDate = localTodayStr();
-      if (!email || !password) {
-        setStatus('Login necessário');
-        showLogin();
-        return;
-      }
       const btnPanel = document.getElementById('btnAplicarFiltros');
       if (btnPanel) btnPanel.disabled = true;
       const myGen = ++runLoadAlertsGeneration;
@@ -2386,8 +2373,6 @@ export function bootstrapTaboa() {
           try {
             payload = await consumeScanAlertsStream({
               apiBase: API_BASE,
-              email,
-              password,
               startDate,
               endDate,
               selectedIndices: [...selectedShapeIndices],
@@ -2447,6 +2432,9 @@ export function bootstrapTaboa() {
           }
           return;
         }
+
+        setStatus('A varredura de alertas precisa do servidor.', true);
+        return;
 
         // ── Modo sem backend: varredura client-side usando AOI do WFS background ──
         let allFeatures = assentamentosGeoJSON?.features || [];
@@ -2644,12 +2632,7 @@ export function bootstrapTaboa() {
     // ─────────────────────────────────────────────────────────────────────────────
 
     document.getElementById('btnLogin')?.addEventListener('click', () => {
-      const email = document.getElementById('email')?.value?.trim();
-      const password = document.getElementById('password')?.value;
-      if (!email || !password) return;
-      saveCreds(email, password);
       hideLogin();
-      setStatus('✓ Login OK. Varredura MapBiomas na faixa 05/06/07…');
       runLoadAlerts().catch((e) => setStatus('Erro na varredura: ' + (e.message || e), true));
     });
 
@@ -3278,13 +3261,6 @@ export function bootstrapTaboa() {
       } catch (e) {
         console.warn('assentamentos INCRA × área local:', e);
       }
-      const email = document.getElementById('email')?.value?.trim();
-      const password = document.getElementById('password')?.value;
-      if (!email || !password) {
-        setStatus('Login MapBiomas necessário para varrer alertas na faixa.', true);
-        showLogin();
-        return;
-      }
       await runLoadAlerts({ forceRefresh: true });
     });
 
@@ -3317,14 +3293,8 @@ export function bootstrapTaboa() {
       } catch (e) {
         console.warn('assentamentos INCRA:', e);
       }
-      const creds = loadCreds();
-      if (creds && creds.email && creds.password) {
-        document.getElementById('email').value = creds.email;
-        document.getElementById('password').value = creds.password;
-        setStatus('✓ Credenciais OK. Varredura automática MapBiomas (Litoral, Baixo e Extremo Sul)…');
-        runLoadAlerts().catch((e) => setStatus('Erro na varredura: ' + (e.message || e), true));
-      } else {
-        setStatus('✓ Pronto.');
-      }
+      clearCreds();
+      setStatus('✓ Varredura MapBiomas na faixa 05/06/07…');
+      runLoadAlerts().catch((e) => setStatus('Erro na varredura: ' + (e.message || e), true));
     })();
 }

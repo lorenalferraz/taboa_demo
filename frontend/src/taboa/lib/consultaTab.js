@@ -840,7 +840,7 @@ export function setupConsultaTab(ctx) {
 
       const msg = hits.length
         ? `Consulta: ${hits.length} alerta(s) MapBiomas na área.`
-        : (alerts.length ? 'Consulta: nenhum alerta na área.' : 'Consulta: faça o login para carregar os alertas.');
+        : (alerts.length ? 'Consulta: nenhum alerta na área.' : 'Consulta: os alertas ainda estão sendo carregados.');
       setStatus(msg, false);
     } catch (e) {
       resultEl.innerHTML = `<p class="consulta-result-err">${esc(e.message || e)}</p>`;

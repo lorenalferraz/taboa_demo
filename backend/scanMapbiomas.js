@@ -38,6 +38,7 @@ const {
   loadGeoJsonFile,
   MUNICIPIOS_FILE,
 } = require('./localShapeLoader');
+const { mapbiomasCredentials } = require('./mapbiomasAuth');
 
 const SCAN_ROOT = path.join(__dirname);
 const MUN_SCAN_CONCURRENCY = 2;
@@ -571,11 +572,19 @@ function acceptCachedPayload(payload) {
   return payload;
 }
 
+function pruneScanMemoryCache() {
+  const now = Date.now();
+  for (const [k, v] of scanCache.entries()) {
+    if (now > v.expiresAt) scanCache.delete(k);
+  }
+}
+
 /**
  * Busca resultado em cache: memória → arquivo.
  * Retorna null se não encontrado (ou forceRefresh=true).
  */
 async function getScanFromCache(startDate, endDate, email, forceRefresh) {
+  pruneScanMemoryCache();
   if (forceRefresh) return null;
   const key = scanCacheKey(startDate, endDate, email);
 
@@ -608,27 +617,20 @@ async function putScanInCache(startDate, endDate, email, payload) {
   putScanInFileCache(SCAN_ROOT, key, compact);
 }
 
-/** Limpa entradas expiradas periodicamente para não acumular memória. */
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of scanCache.entries()) {
-    if (now > v.expiresAt) scanCache.delete(k);
-  }
-}, 5 * 60 * 1000);
-
 /**
- * @param {object} body - email, password, startDate, endDate, selectedIndices?: number[]
+ * @param {object} body - startDate, endDate, selectedIndices?: number[]
  * @param {(ev: object) => void} send - emite eventos SSE (serializáveis JSON)
  */
 async function runScan(shapeDir, body, send) {
-  const email = String(body.email || '').trim();
-  const password = body.password;
+  const stored = mapbiomasCredentials();
+  const email = stored.email;
+  const password = stored.password;
   const startDate = body.startDate || '2020-01-01';
   const endDate = body.endDate || new Date().toISOString().slice(0, 10);
   const forceRefresh = !!body.forceRefresh;
 
   if (!email || !password) {
-    send({ type: 'error', message: 'Email e palavra-passe são obrigatórios.' });
+    send({ type: 'error', message: 'Credenciais MapBiomas não configuradas no servidor.' });
     return;
   }
 
@@ -772,4 +774,7 @@ async function runScan(shapeDir, body, send) {
   send({ type: 'result', payload: resultPayload });
 }
 
-module.exports = { runScan, loadFaixaShapeFromDir };
+// Atribuição direta: o empacotador da Vercel perde o atalho
+// `module.exports = { runScan, loadFaixaShapeFromDir }`.
+exports.runScan = runScan;
+exports.loadFaixaShapeFromDir = loadFaixaShapeFromDir;
