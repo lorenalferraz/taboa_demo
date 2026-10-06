@@ -32,7 +32,55 @@ function stamp(payload) {
  * POST /api/consulta/relatorio
  * Corpo JSON com o resumo da consulta; responde application/pdf.
  */
-async function handleConsultaRelatorioPdf(req, res) {
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+  res.end(body);
+}
+
+async function runProbe(probe) {
+  if (probe === 'font') {
+    const PDFDocument = require('pdfkit');
+    const pdf = await new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 42 });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.font('Helvetica').fontSize(12).text('ok');
+      doc.end();
+    });
+    return { ok: true, probe, bytes: pdf.length };
+  }
+  if (probe === 'sharp') {
+    const sharp = require('sharp');
+    const buf = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 200, g: 20, b: 20 } },
+    }).jpeg().toBuffer();
+    return { ok: true, probe, bytes: buf.length };
+  }
+  if (probe === 'turf') {
+    const turf = require('@turf/turf');
+    const b = turf.bbox(turf.point([-39.29936, -15.864784]));
+    return { ok: true, probe, bbox: b };
+  }
+  return null;
+}
+
+async function handleConsultaRelatorioPdf(req, res, probe = '') {
+  if (probe) {
+    try {
+      const found = await runProbe(probe);
+      if (!found) {
+        sendJson(res, 400, { ok: false, error: 'probe desconhecida' });
+        return;
+      }
+      sendJson(res, 200, found);
+    } catch (e) {
+      sendJson(res, 500, { ok: false, probe, error: String(e && e.stack || e) });
+    }
+    return;
+  }
   let body;
   try {
     body = await readJsonBody(req);

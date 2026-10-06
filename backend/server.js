@@ -215,7 +215,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'relatorio-v9',
+      rev: 'relatorio-v10',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
@@ -593,10 +593,16 @@ const server = http.createServer((req, res) => {
 
   // POST /api/consulta/relatorio — PDF da consulta (código em backend/relatorio)
   if (targetPath === '/api/consulta/relatorio' && req.method === 'POST') {
-    handleConsultaRelatorioPdf(req, res).catch((e) => {
+    const probe = url.searchParams.get('probe') || '';
+    if (probe === 'ping') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
+      res.end(JSON.stringify({ ok: true, probe: 'ping', rev: 'relatorio-v10' }));
+      return;
+    }
+    handleConsultaRelatorioPdf(req, res, probe).catch((e) => {
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-        res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
+        res.end(JSON.stringify({ ok: false, error: String(e && e.stack || e) }));
       }
     });
     return;
