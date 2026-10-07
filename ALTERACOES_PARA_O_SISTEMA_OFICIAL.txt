@@ -387,6 +387,25 @@ Como conferir
   a divisão no meio e a borda em volta.
 
 
+15. Limpar tira a seleção do mapa sem voltar o zoom — 07/10/2026
+----------------------------------------------------------------
+
+O que passou a valer
+  Limpar esvazia município, CAR e a área da consulta e também tira isso
+  do mapa. O zoom permanece onde estava. Resetar continua devolvendo o
+  mapa ao enquadramento inicial da faixa, sem apagar o que foi digitado.
+
+Arquivos
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/App.jsx
+
+Como conferir
+  Selecionar um município ou um CAR, anotar o zoom e clicar em Limpar.
+  O polígono some e o enquadramento fica o mesmo. Resetar amplia de
+  volta para a faixa inteira.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

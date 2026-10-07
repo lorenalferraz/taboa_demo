@@ -1260,10 +1260,23 @@ export function bootstrapTaboa() {
       applyAssentamentoSelect(String(idx), { fit: true }).catch((e) => console.warn('assentamento:', e));
     }
 
+    function clearMunicipioFromMap() {
+      const features = assentamentosGeoJSON?.features || [];
+      selectedShapeIndices.clear();
+      for (let i = 0; i < features.length; i++) {
+        selectedShapeIndices.add(i);
+        toggleShapeVisibility(i, true);
+      }
+      const chk = document.getElementById('chkShape');
+      if (chk) chk.checked = false;
+      toggleShapeLayer(false);
+    }
+
     function resetMapViewToDefault() {
       if (!map) return;
       try { map.closePopup(); } catch (_) {}
       removeFaixaSearchLayerFromMap();
+      clearMunicipioFromMap();
       if (faixaPlanejamentoGeoJSON?.features?.length) {
         fitMapToFaixaBounds();
         return;
@@ -2014,6 +2027,12 @@ export function bootstrapTaboa() {
         hideLoading,
         fetchMunicipio: (lat, lng) => fetchMunicipioPorCoordenada(lat, lng),
         resetMapView: () => resetMapViewToDefault(),
+        clearSelectorMap: () => {
+          if (!map) return;
+          try { map.closePopup(); } catch (_) {}
+          removeFaixaSearchLayerFromMap();
+          clearMunicipioFromMap();
+        },
         onImovelSelected: (feat) => {
           const car = String(feat?.properties?.NUMERO_CAR || '').trim();
           setImoveisRuraisCarFilter(car || '', { enable: !!car });

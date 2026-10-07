@@ -200,6 +200,7 @@ export function setupConsultaTab(ctx) {
     hideLoading,
     fetchMunicipio,
     resetMapView,
+    clearSelectorMap,
     onImovelSelected,
     onImovelCleared,
   } = ctx;
@@ -891,6 +892,8 @@ export function setupConsultaTab(ctx) {
       delete imovelIn.dataset.car;
     }
     if (typeof onImovelCleared === 'function') onImovelCleared();
+    document.querySelectorAll('.filter-combobox-list').forEach((ul) => { ul.hidden = true; });
+    if (typeof clearSelectorMap === 'function') clearSelectorMap();
     setKmlLabel('');
     setKmlError('');
     resultEl.hidden = true;
