@@ -238,6 +238,29 @@ Como conferir
   e "Propriedade", no mesmo tamanho de célula.
 
 
+9. Propriedades no formato da tabela de UC — 07/10/2026
+-------------------------------------------------------
+
+Problema
+  Reserva legal e APP repetiam o CAR, que já está no cadastro. As
+  propriedades cruzadas saíam em células soltas, e o CAR/CEFIR ficava
+  apertado.
+
+O que passou a valer
+  - APP e reserva legal mostram a propriedade, sem o CAR.
+  - No cadastro, o título "Propriedades" usa a faixa cinza mais escura
+    das unidades de conservação, com uma propriedade por linha.
+  - A coluna CAR/CEFIR é a mais larga da linha.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No laudo, a faixa "Propriedades" lista cada imóvel numa linha, com o
+  CAR largo. Nas tabelas de reserva legal e APP, a propriedade aparece
+  sem o número do CAR.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

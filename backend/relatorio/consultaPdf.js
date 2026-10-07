@@ -482,16 +482,12 @@ function drawRestricaoImovelTable(doc, y, title, itens) {
     { label: 'Tipo', w: 108 },
     { label: 'Sobreposição', w: 78 },
     { label: '% de Sobreposição', w: 78 },
-  ], rows.map((row) => {
-    const car = String(row.car || '').trim();
-    const nome = txt(row.propriedade);
-    return [
-      car ? `${nome}\n${car}` : nome,
-      txt(row.tipo),
-      formatHa(row.areaHa),
-      formatPct(row.pct),
-    ];
-  }));
+  ], rows.map((row) => [
+    txt(row.propriedade),
+    txt(row.tipo),
+    formatHa(row.areaHa),
+    formatPct(row.pct),
+  ]));
 }
 
 function drawCrossingCards(doc, y, cruzamentos) {
@@ -591,15 +587,24 @@ function linhasImoveisCadastrais(imoveis) {
   if (!list.length) {
     return [{ label: 'Propriedade', value: 'Não identificada no cadastro de imóveis rurais.' }];
   }
-  const rows = [];
-  for (const im of list) {
-    rows.push({ label: 'Propriedade', value: im.nome || 'Imóvel rural' });
-    rows.push({ label: 'CAR/CEFIR', value: im.car || '—' });
-    if (Number.isFinite(Number(im.pct))) {
-      rows.push({ label: 'Sobreposição', value: formatPct(im.pct) });
-    }
-  }
-  return rows;
+  return [];
+}
+
+function drawPropriedadesTable(doc, y, imoveis) {
+  const list = Array.isArray(imoveis) ? imoveis : [];
+  if (!list.length) return y;
+  const title = list.length === 1 ? 'Propriedade' : 'Propriedades';
+  const temPct = list.some((im) => Number.isFinite(Number(im.pct)));
+  const cols = [
+    { label: 'Propriedade', w: 132 },
+    { label: 'CAR/CEFIR' },
+  ];
+  if (temPct) cols.push({ label: 'Sobreposição', w: 72 });
+  return drawLabeledTable(doc, y, title, cols, list.map((im) => {
+    const row = [txt(im.nome), txt(im.car)];
+    if (temPct) row.push(Number.isFinite(Number(im.pct)) ? formatPct(im.pct) : '—');
+    return row;
+  }));
 }
 
 function geometriaCadastral(raw, prepared) {
@@ -957,6 +962,9 @@ async function buildConsultaPdf(raw = {}) {
     }
     cadastro.push(...linhasImoveisCadastrais(imoveisCadastro));
     y = drawInfoTable(doc, y, cadastro);
+    if ((imoveisCadastro || []).length) {
+      y = drawPropriedadesTable(doc, y, imoveisCadastro);
+    }
 
     y = drawSectionTitle(doc, y, 'RESULTADO ANALÍTICO DA CONSULTA');
     const alerts = payload.alerts || [];
