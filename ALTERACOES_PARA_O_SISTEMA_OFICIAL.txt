@@ -563,6 +563,27 @@ Como conferir
   numa delas abre o popup.
 
 
+23. PRODES só de 2020 em diante e só nos municípios — 07/10/2026
+----------------------------------------------------------------
+
+O que passou a valer
+  A camada PRODES desenha só o desmatamento de 2020 em diante. O
+  pedido ao WFS já filtra o ano. Cada polígono é recortado no
+  contorno dos municípios da faixa: o que fica fora desse shape não
+  aparece. A cor continua a dos alertas do MapBiomas.
+
+Por quê
+  O recorte anterior usava o retângulo da área e trazia todos os
+  anos. O uso é o desmate recente dentro dos municípios.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+
+Como conferir
+  Ligar PRODES. As manchas ficam só sobre os municípios, sem
+  espalhar no retângulo em volta. No popup, o ano é 2020 ou posterior.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

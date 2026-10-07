@@ -1,7 +1,8 @@
 /**
  * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
- * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Na vista atual,
- * inclusive a inicial, entram todos. A cor é a mesma dos alertas do MapBiomas.
+ * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Entram só os
+ * desmates de 2020 em diante, recortados no contorno dos municípios.
+ * A cor é a mesma dos alertas do MapBiomas.
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
@@ -13,6 +14,7 @@ import { applyLayerOrder, paneName } from './layerOrder.js';
 const WFS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
 const TYPE_NAME = 'prodes-mata-atlantica-nb:yearly_deforestation';
 const PAGE = 8000;
+const MIN_YEAR = 2020;
 
 let group = null;
 let canvas = null;
@@ -33,8 +35,7 @@ function unionFeatures(features) {
       if (next?.geometry) acc = next;
     } catch (_) {}
   }
-  if (!acc?.geometry) return null;
-  return turf.simplify(acc, { tolerance: 0.002, highQuality: false });
+  return acc?.geometry ? acc : null;
 }
 
 async function municipioFeatures() {
@@ -93,6 +94,7 @@ function covers(bounds) {
 }
 
 function featureUrl(bounds, count, startIndex) {
+  const cql = `year >= ${MIN_YEAR} AND BBOX(geom,${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},'EPSG:4674')`;
   const params = new URLSearchParams({
     service: 'WFS',
     version: '2.0.0',
@@ -100,11 +102,25 @@ function featureUrl(bounds, count, startIndex) {
     typeName: TYPE_NAME,
     outputFormat: 'application/json',
     srsName: 'EPSG:4674',
-    bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},EPSG:4674`,
+    CQL_FILTER: cql,
     count: String(count),
     startIndex: String(startIndex),
   });
   return `${WFS_URL}?${params}`;
+}
+
+function clipToMunicipios(feat) {
+  const year = Number(feat?.properties?.year);
+  if (!Number.isFinite(year) || year < MIN_YEAR || !feat?.geometry) return null;
+  let hit;
+  try {
+    hit = turf.intersect(turf.featureCollection([feat, coverage.feature]));
+  } catch (_) {
+    return null;
+  }
+  if (!hit?.geometry) return null;
+  hit.properties = feat.properties;
+  return hit;
 }
 
 async function fetchGeoJson(url, seq) {
@@ -208,9 +224,9 @@ async function loadBounds(bounds, seq) {
   let drawn = 0;
 
   const addPage = async (data) => {
-    const features = data?.features || [];
-    if (!features.length || seq !== reqSeq) return;
-    group.addData({ type: 'FeatureCollection', features });
+    const features = (data?.features || []).map(clipToMunicipios).filter(Boolean);
+    if (seq !== reqSeq) return;
+    if (features.length) group.addData({ type: 'FeatureCollection', features });
     drawn += features.length;
     showNote(`Carregando os polígonos do PRODES… ${drawn.toLocaleString('pt-BR')}`);
     enableCanvasClick();
