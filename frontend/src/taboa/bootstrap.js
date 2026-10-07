@@ -2817,6 +2817,12 @@ export function bootstrapTaboa() {
       input.addEventListener('blur', () => setTimeout(() => { ul.hidden = true; }, 150));
       input.closest('.filter-tab-content')?.addEventListener('scroll', () => { ul.hidden = true; }, { passive: true });
       window.addEventListener('resize', () => { ul.hidden = true; });
+      document.addEventListener('pointerdown', (ev) => {
+        if (ul.hidden) return;
+        const t = ev.target;
+        if (ul.contains(t) || input.contains(t) || toggleBtn?.contains(t)) return;
+        ul.hidden = true;
+      }, true);
     }
 
     setupCombobox('filterMunicipio', 'municipiosDropdown', 'btnMunicipioToggle');

@@ -579,21 +579,23 @@ async function searchImoveisRurais({ q = '', municipio = '', limit = 40 } = {}) 
   const query = foldSearch(q);
   const munFold = foldSearch(municipio);
   const cap = Math.min(80, Math.max(1, Number(limit) || 40));
-  const out = [];
+  const matched = [];
   for (const it of items) {
     if (munFold && it.munFold && !it.munFold.includes(munFold)) continue;
     if (query && !(it.search.includes(query) || foldSearch(it.car).includes(query))) continue;
-    out.push({
-      i: it.i,
-      car: it.car,
-      nome: it.nome,
-      mun: it.mun,
-      ide: it.ide,
-      label: it.nome ? `${it.car} — ${it.nome}` : it.car,
-    });
-    if (out.length >= cap) break;
+    matched.push(it);
   }
-  return { items: out, total: items.length };
+  matched.sort((a, b) => String(a.nome || a.car).localeCompare(String(b.nome || b.car), 'pt-BR')
+    || String(a.car).localeCompare(String(b.car), 'pt-BR'));
+  const out = matched.slice(0, cap).map((it) => ({
+    i: it.i,
+    car: it.car,
+    nome: it.nome,
+    mun: it.mun,
+    ide: it.ide,
+    label: it.nome ? `${it.car} — ${it.nome}` : it.car,
+  }));
+  return { items: out, total: items.length, matched: matched.length };
 }
 
 function getImovelByIndex(i, opts = {}) {

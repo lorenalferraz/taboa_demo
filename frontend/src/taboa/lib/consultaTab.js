@@ -1067,6 +1067,13 @@ export function setupConsultaTab(ctx) {
         const data = await res.json().catch(() => null);
         if (my !== seq) return;
         renderList(data?.items || [], 'Nenhum imóvel encontrado');
+        const matched = Number(data?.matched);
+        if (matched > (data?.items || []).length) {
+          const more = document.createElement('li');
+          more.className = 'filter-combobox-empty';
+          more.textContent = `Mostrando ${data.items.length} de ${matched}. Digite o CAR ou o nome para localizar.`;
+          ul.appendChild(more);
+        }
         if (open) positionComboboxList(ul, input);
       } catch (_) {
         if (my !== seq) return;
@@ -1088,6 +1095,12 @@ export function setupConsultaTab(ctx) {
     input.addEventListener('blur', () => setTimeout(() => { ul.hidden = true; }, 160));
     input.closest('.filter-tab-content')?.addEventListener('scroll', () => { ul.hidden = true; }, { passive: true });
     window.addEventListener('resize', () => { ul.hidden = true; });
+    document.addEventListener('pointerdown', (ev) => {
+      if (ul.hidden) return;
+      const t = ev.target;
+      if (ul.contains(t) || input.contains(t) || toggle?.contains(t)) return;
+      ul.hidden = true;
+    }, true);
     munIn?.addEventListener('input', () => {
       if (input.dataset.index) {
         input.value = '';

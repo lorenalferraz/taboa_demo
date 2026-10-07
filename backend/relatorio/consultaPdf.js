@@ -214,15 +214,13 @@ function drawHeader(doc, generatedAt) {
   if (logo) {
     try { doc.image(logo, MARGIN, logoY, { height: logoH }); } catch (_) {}
   }
-  const title = 'LAUDO DE ANÁLISE DE ÁREA'.toLocaleUpperCase('pt-BR');
-  const titleSize = 13;
-  doc.fillColor(NAVY).font(doc._sansBold).fontSize(titleSize);
-  const lineH = doc.currentLineHeight();
-  const titleY = top + (rowH - lineH) / 2;
+  const title = 'Relatório de análise de Imóveis Rurais';
+  doc.fillColor(NAVY).font(doc._sansBold).fontSize(11);
+  const titleH = doc.heightOfString(title, { width: cellW, align: 'right' });
+  const titleY = top + Math.max(4, (rowH - titleH) / 2);
   doc.text(title, MARGIN + cellW, titleY, {
     width: cellW,
     align: 'right',
-    lineBreak: false,
     lineGap: 0,
   });
   const rowBottom = top + rowH;
@@ -240,8 +238,7 @@ function drawFooter(doc) {
   doc.moveTo(MARGIN, y - 8).lineTo(PAGE_W - MARGIN, y - 8)
     .strokeColor(LINE).lineWidth(0.6).stroke();
   doc.fillColor(MUTED).font(doc._sans).fontSize(7.5)
-    .text('Tabôa · Módulo de Desmatamento', MARGIN, y, { width: CONTENT_W / 2, lineBreak: false });
-  doc.text(`Página ${doc._taboaPage || 1}`, MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
+    .text(`Página ${doc._taboaPage || 1}`, MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
   notes.forEach((n, i) => {
     doc.font(doc._sans).fontSize(6.4).fillColor(MUTED)
       .text(`* ${n.sigla} — ${n.texto} ${n.url}`, MARGIN, y + 12 + i * 8, {
@@ -756,15 +753,19 @@ function drawMapLegend(doc, y, legend) {
   doc.font(doc._sans).fontSize(8);
   for (const item of items) {
     const label = String(item.label);
-    const w = 16 + doc.widthOfString(label);
+    const w = 22 + doc.widthOfString(label);
     if (x > MARGIN && x + w > MARGIN + CONTENT_W) {
       x = MARGIN;
       y += rowH;
     }
     doc.save();
-    doc.rect(x, y + 1, 9, 9).fillColor(item.fill || '#38bdf8').fill();
+    doc.fillOpacity(0.22).lineWidth(1.15);
+    doc.rect(x, y, 16, 10)
+      .fillColor(item.fill || '#38bdf8')
+      .strokeColor(item.stroke || item.fill || '#0369a1')
+      .fillAndStroke();
     doc.restore();
-    doc.fillColor(TEXT).text(label, x + 13, y, { lineBreak: false });
+    doc.fillColor(TEXT).text(label, x + 20, y + 1, { lineBreak: false });
     x += w + 12;
   }
   return y + rowH + 4;
@@ -917,7 +918,7 @@ async function buildConsultaPdf(raw = {}) {
       margin: 0,
       autoFirstPage: true,
       info: {
-        Title: 'LAUDO DE ANÁLISE DE ÁREA'.toLocaleUpperCase('pt-BR'),
+        Title: 'Relatório de análise de Imóveis Rurais',
         Author: 'TABOA',
         Subject: 'Cruzamento de área com alertas MapBiomas e camadas territoriais',
         CreationDate: new Date(),

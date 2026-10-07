@@ -324,7 +324,7 @@ function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, fr
   const legendItems = [
     { fill: '#38bdf8', stroke: '#7dd3fc', label: 'Área de análise' },
   ];
-  if (clips?.length) legendItems.push({ fill: '#ef4444', stroke: '#fecaca', label: 'Alerta MapBiomas' });
+  if (clips?.length) legendItems.push({ fill: '#ef4444', stroke: '#ef4444', label: 'Alerta MapBiomas' });
   const seen = new Set();
   for (const o of overlays || []) {
     const key = o.legend || o.id;
@@ -469,7 +469,7 @@ async function renderSatelliteMap(opts = {}) {
     push(o.geom, o.fill || '#f59e0b', o.stroke || '#b45309', o.legend || o.id);
   }
   for (const clip of clips.slice(0, 40)) {
-    push(clip, '#ef4444', '#fecaca', 'Alerta MapBiomas');
+    push(clip, '#ef4444', '#ef4444', 'Alerta MapBiomas');
   }
   push(aoi, '#38bdf8', '#0369a1', 'Área de análise');
   let pin = null;

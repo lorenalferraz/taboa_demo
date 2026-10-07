@@ -301,6 +301,41 @@ Como conferir
   nome da tabela Propriedades. O tipo ocupa a coluna larga.
 
 
+12. Listas, título do relatório, rodapé e legenda do alerta — 07/10/2026
+------------------------------------------------------------------------
+
+Problema
+  As listas de município e de CAR só fechavam na seta. O rodapé trazia
+  "Tabôa - Módulo de Desmatamento". O título era "Laudo de análise de
+  área". No mapa, o alerta saía com contorno rosa claro e a legenda era
+  um quadrado vermelho sólido.
+
+O que passou a valer
+  - Município e CAR fecham ao clicar fora, sem precisar escolher um item.
+  - A lista de CAR do município avisa quando há mais imóveis do que os
+    40 exibidos. Ibirapitanga tem 1.456 imóveis; a lista automática mostra
+    os 40 primeiros em ordem alfabética. O restante aparece ao digitar
+    o CAR ou o nome.
+  - O relatório se chama "Relatório de análise de Imóveis Rurais".
+  - O rodapé fica só com o número da página.
+  - O alerta no mapa e na legenda usam o mesmo vermelho, com o mesmo
+    preenchimento transparente e o mesmo contorno.
+
+Arquivos
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/taboa/lib/consultaTab.js
+  - backend/localShapeLoader.js
+  - backend/shape-runtime.txt
+  - backend/relatorio/consultaPdf.js
+  - backend/relatorio/mapaSatelite.js
+
+Como conferir
+  Abrir município ou CAR e clicar no mapa: a lista fecha. Em
+  Ibirapitanga, a lista avisa que há mais imóveis. No PDF, o título novo
+  aparece, o rodapé não tem a frase do módulo, e o quadrado da legenda
+  de alerta repete a cor do polígono no mapa.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
