@@ -1,0 +1,110 @@
+ALTERAÇÕES DA DEMO PARA O SISTEMA OFICIAL
+=========================================
+
+Este arquivo é o registro do que muda nesta demo (taboa_demo) e ainda precisa
+ser levado para o sistema oficial.
+
+A partir de 07/10/2026, toda alteração feita aqui é acrescentada no final
+deste arquivo, com data, o que mudou, por quê, em quais arquivos e como
+conferir no laudo.
+
+As entradas abaixo já estavam na demo antes desse registro. Entram aqui
+porque também precisam ir para o sistema oficial.
+
+
+1. Mapa do laudo — 06/10/2026
+-----------------------------
+
+Problema
+  As camadas (área de análise, imóvel, APP, reserva legal) eram desenhadas
+  por cima da página inteira e saíam para fora da foto de satélite.
+  O mapa não tinha rosa dos ventos, barra de escala, coordenadas nem grade.
+
+O que passou a valer
+  - As camadas são recortadas no retângulo da foto. Nada atravessa a borda.
+  - Rosa dos ventos no canto superior direito, dentro do mapa, com o N.
+  - Barra de escala no canto inferior direito, dentro do mapa.
+  - Longitude em cima e embaixo, na horizontal.
+  - Latitude à esquerda e à direita, na vertical, lendo de baixo para cima.
+  - Grade branca, quase imperceptível: cor #ffffff, opacidade 0,18,
+    espessura 0,45. Há margem em volta da foto para os rótulos não
+    cobrirem a legenda.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+    Funções: drawMapa, drawMapVectors, drawMapGrid, drawMapCoords,
+    drawVerticalLabel, drawMapCompass, drawMapScale.
+  - backend/relatorio/mapaSatelite.js
+    O retorno do mapa inclui decor (linhas da grade, rótulos e escala).
+
+Como conferir
+  Baixar o relatório de uma consulta com ponto. O círculo azul e os
+  polígonos param na borda da imagem. Grade, rosa dos ventos, escala e
+  coordenadas aparecem.
+
+
+2. Município no laudo — 06/10/2026
+----------------------------------
+
+Problema
+  O campo Município / UF saía em branco. O shape municipios.geojson está
+  em UTM (EPSG:31984, fuso 24S) e o laudo comparava com a área em graus,
+  então o cruzamento não achava município. Além disso, esse shape só cobre
+  parte dos municípios da faixa (litoral sul). Pontos do extremo sul, como
+  Belmonte, ficavam de fora.
+
+O que passou a valer
+  - Antes de cruzar, o contorno dos municípios é convertido de UTM 24S
+    para longitude/latitude.
+  - Se o ponto ou a área cair dentro de um desses municípios, o campo
+    mostra Nome/UF (exemplo: Ilhéus/BA).
+  - Se o shape não cobrir o lugar, o laudo usa o campo MUNICIPIO do
+    imóvel rural identificado. Exemplo: a Fazenda Araci (BE397) sai
+    como Belmonte/BA.
+  - No laudo de cada alerta, um município vazio ("—") não esconde o
+    município já encontrado para a consulta.
+
+Arquivos
+  - backend/relatorio/cruzamentos.js
+    Conversão UTM, identificarMunicipios e o município em dadosImovelRural.
+  - backend/relatorio/consultaPdf.js
+    Preenche Município / UF com o território e, na falta dele, com o imóvel.
+
+Como conferir
+  Consulta em ponto dentro de um município do shape: o nome vem do
+  território. Consulta na Fazenda Araci (cerca de -15,864784, -39,299360):
+  o campo mostra Belmonte/BA.
+
+
+3. Mapa do laudo centralizado — 07/10/2026
+------------------------------------------
+
+Problema
+  O mapa enquadrava só a propriedade quando ela era encontrada, ou só a
+  área da consulta. Uma das duas ficava cortada ou encostada na borda.
+
+O que passou a valer
+  O enquadramento junta a área desenhada ou inserida (ponto com buffer ou
+  polígono) e a propriedade rural. Esse conjunto fica no centro da foto,
+  com a mesma margem dos dois lados. Alertas continuam desenhados por
+  cima, sem puxar o zoom.
+
+Arquivos
+  - backend/relatorio/mapaSatelite.js
+    Função focusBbox, usada por renderSatelliteMap.
+
+Como conferir
+  Baixar o relatório de um ponto que caia numa propriedade maior que o
+  buffer, ou de um polígono ao lado do imóvel. Os dois polígonos aparecem
+  inteiros e o conjunto fica no meio da imagem.
+
+
+Próximas alterações
+-------------------
+Acrescentar abaixo, neste formato:
+
+Data
+O que mudou
+Por quê
+Arquivos
+Como conferir no sistema oficial

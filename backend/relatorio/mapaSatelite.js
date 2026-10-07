@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const TILE = 256;
 const MAX_TILES = 8;
 const TARGET_LONG_SIDE = 1400;
-const PAD_FRAC = 0.1;
+const PAD_FRAC = 0.18;
 const MIN_PAD_DEG = 0.0012;
 const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
@@ -51,6 +51,23 @@ function padBbox(b) {
   const dx = Math.max((b[2] - b[0]) * PAD_FRAC, MIN_PAD_DEG);
   const dy = Math.max((b[3] - b[1]) * PAD_FRAC, MIN_PAD_DEG);
   return [b[0] - dx, b[1] - dy, b[2] + dx, b[3] + dy];
+}
+
+function pointBbox(point) {
+  if (!Array.isArray(point) || point.length < 2) return null;
+  const lng = Number(point[0]);
+  const lat = Number(point[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  return [lng, lat, lng, lat];
+}
+
+/** Área da consulta e propriedade entram juntas, com a mesma margem nos dois lados. */
+function focusBbox(aoi, point, frames) {
+  return unionBboxes([
+    geomBbox(asGeom(aoi)),
+    pointBbox(point),
+    ...(frames || []).map((g) => geomBbox(asGeom(g))),
+  ]);
 }
 
 function unionBboxes(boxes) {
@@ -390,7 +407,7 @@ async function renderSatelliteMap(opts = {}) {
     ...(Array.isArray(opts.frameGeoms) ? opts.frameGeoms : []),
     ...(opts.frameGeom ? [opts.frameGeom] : []),
   ].map(asGeom).filter((g) => g?.type);
-  const raw = unionBboxes(frameList.map(geomBbox)) || geomBbox(aoi);
+  const raw = focusBbox(aoi, opts.point, frameList);
   if (!raw) return null;
   const bbox = toLandscapeBbox(padBbox(raw));
   const range = fitTileRange(bbox);
