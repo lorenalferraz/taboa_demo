@@ -381,13 +381,10 @@ function drawCrossingIcon(doc, cx, cy, id, hit) {
   doc.restore();
 }
 
-function drawUcTable(doc, y, ucs) {
-  const rows = Array.isArray(ucs) ? ucs : [];
-  if (!rows.length) return y;
+function drawLabeledTable(doc, y, title, cols, valueRows) {
+  const rows = Array.isArray(valueRows) ? valueRows : [];
+  if (!rows.length || !cols?.length) return y;
 
-  const title = rows.length === 1
-    ? 'Unidade de conservação sobreposta'
-    : 'Unidades de conservação sobrepostas';
   const TITLE_BG = '#cfd6dc';
   const TITLE_EDGE = '#b0b8c0';
   const titleH = 24;
@@ -404,30 +401,23 @@ function drawUcTable(doc, y, ucs) {
   y += titleH + CELL_GAP;
   syncCursor(doc, y);
 
-  const wEsfera = 56;
-  const wGrupo = 88;
-  const wHa = 72;
-  const wPct = 70;
-  const wNome = CONTENT_W - wEsfera - wGrupo - wHa - wPct - CELL_GAP * 4;
-  const cols = [
-    { label: 'Esfera', w: wEsfera },
-    { label: 'Nome', w: wNome },
-    { label: 'Grupo SNUC', w: wGrupo },
-    { label: 'Sobreposição', w: wHa },
-    { label: '% de Sobreposição', w: wPct },
-  ];
+  const gapCount = Math.max(0, cols.length - 1);
+  const specified = cols.reduce((sum, col) => sum + (Number(col.w) || 0), 0);
+  const flexN = cols.filter((col) => !col.w).length;
+  const leftover = CONTENT_W - specified - CELL_GAP * gapCount;
+  const flexW = flexN > 0 ? leftover / flexN : 0;
+  const widths = cols.map((col) => col.w || flexW);
 
-  for (const row of rows) {
-    const values = [txt(row.esfera), txt(row.nome), txt(row.grupo), formatHa(row.areaHa), formatPct(row.pct)];
-    const labelHs = cols.map((col) => {
-      const inner = Math.max(18, col.w - CELL_PAD_X * 2);
+  for (const values of rows) {
+    const labelHs = cols.map((col, i) => {
+      const inner = Math.max(18, widths[i] - CELL_PAD_X * 2);
       doc.font(doc._sansBold).fontSize(6);
       return Math.max(10, doc.heightOfString(col.label, { width: inner, lineGap: 0.3 }));
     });
-    const valueHs = cols.map((col, i) => {
-      const inner = Math.max(18, col.w - CELL_PAD_X * 2);
+    const valueHs = cols.map((_, i) => {
+      const inner = Math.max(18, widths[i] - CELL_PAD_X * 2);
       doc.font(doc._sans).fontSize(8);
-      return Math.max(11, doc.heightOfString(values[i], { width: inner, lineGap: 1 }));
+      return Math.max(11, doc.heightOfString(String(values[i] ?? '—'), { width: inner, lineGap: 1 }));
     });
     const rowH = Math.max(
       48,
@@ -436,10 +426,10 @@ function drawUcTable(doc, y, ucs) {
     y = ensureSpace(doc, y, rowH + CELL_GAP + 2);
     let x = MARGIN;
     cols.forEach((col, i) => {
-      const inner = Math.max(18, col.w - CELL_PAD_X * 2);
+      const inner = Math.max(18, widths[i] - CELL_PAD_X * 2);
       doc.save();
       doc.fillColor(CELL_BG).strokeColor(CELL_EDGE).lineWidth(0.4);
-      doc.roundedRect(x, y, col.w, rowH, 2).fillAndStroke();
+      doc.roundedRect(x, y, widths[i], rowH, 2).fillAndStroke();
       doc.restore();
       doc.fillColor(TEXT).font(doc._sansBold).fontSize(6)
         .text(col.label, x + CELL_PAD_X, y + CELL_PAD_Y, {
@@ -447,16 +437,61 @@ function drawUcTable(doc, y, ucs) {
           lineGap: 0.3,
         });
       doc.fillColor(TEXT).font(doc._sans).fontSize(8)
-        .text(values[i], x + CELL_PAD_X, y + CELL_PAD_Y + labelHs[i] + 2, {
+        .text(String(values[i] ?? '—'), x + CELL_PAD_X, y + CELL_PAD_Y + labelHs[i] + 2, {
           width: inner,
           lineGap: 1,
         });
-      x += col.w + CELL_GAP;
+      x += widths[i] + CELL_GAP;
     });
     y += rowH + CELL_GAP;
     syncCursor(doc, y);
   }
   return y + 6;
+}
+
+function drawUcTable(doc, y, ucs) {
+  const rows = Array.isArray(ucs) ? ucs : [];
+  if (!rows.length) return y;
+  const title = rows.length === 1
+    ? 'Unidade de conservação sobreposta'
+    : 'Unidades de conservação sobrepostas';
+  const wEsfera = 56;
+  const wGrupo = 88;
+  const wHa = 72;
+  const wPct = 70;
+  return drawLabeledTable(doc, y, title, [
+    { label: 'Esfera', w: wEsfera },
+    { label: 'Nome' },
+    { label: 'Grupo SNUC', w: wGrupo },
+    { label: 'Sobreposição', w: wHa },
+    { label: '% de Sobreposição', w: wPct },
+  ], rows.map((row) => [
+    txt(row.esfera),
+    txt(row.nome),
+    txt(row.grupo),
+    formatHa(row.areaHa),
+    formatPct(row.pct),
+  ]));
+}
+
+function drawRestricaoImovelTable(doc, y, title, itens) {
+  const rows = Array.isArray(itens) ? itens : [];
+  if (!rows.length) return y;
+  return drawLabeledTable(doc, y, title, [
+    { label: 'Propriedade' },
+    { label: 'Tipo', w: 108 },
+    { label: 'Sobreposição', w: 78 },
+    { label: '% de Sobreposição', w: 78 },
+  ], rows.map((row) => {
+    const car = String(row.car || '').trim();
+    const nome = txt(row.propriedade);
+    return [
+      car ? `${nome}\n${car}` : nome,
+      txt(row.tipo),
+      formatHa(row.areaHa),
+      formatPct(row.pct),
+    ];
+  }));
 }
 
 function drawCrossingCards(doc, y, cruzamentos) {
@@ -495,31 +530,34 @@ function drawCrossingCards(doc, y, cruzamentos) {
   y += h + 8;
   const hits = items.filter((it) => it.hit);
   const misses = items.filter((it) => !it.hit);
-  const otherHits = hits.filter((it) => it.id !== 'uc');
+  const detailIds = new Set(['uc', 'reserva_legal', 'app']);
+  const otherHits = hits.filter((it) => !detailIds.has(it.id));
   const ucHit = hits.find((it) => it.id === 'uc');
-  if (otherHits.length) {
-    y = drawInfoTable(doc, y, otherHits.flatMap((it) => {
-      const label = String(it.sub || '').trim() ? `${it.label} (${it.sub})` : it.label;
-      if (it.id === 'reserva_legal') {
-        const nomes = (it.nomes || []).map((n) => String(n || '').trim()).filter(Boolean);
-        let value = nomes.join('\n') || 'área identificada';
-        if (it.count > nomes.length) {
-          value += `\n+${it.count - nomes.length} reserva(s) legal(is)`;
-        }
-        return [{
-          label: it.label,
-          value,
-          fullWidth: true,
-        }];
-      }
-      return [{
-        label,
-        value: `${(it.nomes || []).join(', ') || 'área identificada'}${it.count > (it.nomes || []).length ? '…' : ''}`,
-      }];
-    }));
-  }
+  const rlHit = hits.find((it) => it.id === 'reserva_legal');
+  const appHit = hits.find((it) => it.id === 'app');
   if (ucHit) {
     y = drawUcTable(doc, y, ucHit.ucs || []);
+  }
+  if (rlHit) {
+    const n = (rlHit.restricoes || []).length || rlHit.count || 1;
+    const title = n === 1 ? 'Reserva legal sobreposta' : 'Reservas legais sobrepostas';
+    y = drawRestricaoImovelTable(doc, y, title, rlHit.restricoes || []);
+  }
+  if (appHit) {
+    const n = (appHit.restricoes || []).length || appHit.count || 1;
+    const title = n === 1
+      ? 'Área de preservação permanente sobreposta'
+      : 'Áreas de preservação permanente sobrepostas';
+    y = drawRestricaoImovelTable(doc, y, title, appHit.restricoes || []);
+  }
+  if (otherHits.length) {
+    y = drawInfoTable(doc, y, otherHits.map((it) => {
+      const label = String(it.sub || '').trim() ? `${it.label} (${it.sub})` : it.label;
+      return {
+        label,
+        value: `${(it.nomes || []).join(', ') || 'área identificada'}${it.count > (it.nomes || []).length ? '…' : ''}`,
+      };
+    }));
   }
   if (misses.length) {
     const nomes = misses.map((it) => String(it.label || '').trim()).filter(Boolean);
@@ -572,22 +610,15 @@ function linhasImoveisCadastrais(imoveis) {
   if (!list.length) {
     return [{ label: 'Propriedade', value: 'Não identificada no cadastro de imóveis rurais.' }];
   }
-  const withPct = list.length > 1;
-  if (!withPct) {
-    const im = list[0];
-    const rows = [{ label: 'Propriedade', value: im.nome || 'Imóvel rural' }];
-    if (im.car) rows.push({ label: 'CAR/CEFIR', value: im.car });
-    return rows;
+  const rows = [];
+  for (const im of list) {
+    rows.push({ label: 'Propriedade', value: im.nome || 'Imóvel rural' });
+    rows.push({ label: 'CAR/CEFIR', value: im.car || '—' });
+    if (Number.isFinite(Number(im.pct))) {
+      rows.push({ label: 'Sobreposição', value: formatPct(im.pct) });
+    }
   }
-  const value = list.map((im) => {
-    const car = im.car ? `CAR/CEFIR ${im.car}` : '';
-    const pct = formatPct(im.pct);
-    const parts = [im.nome || 'Imóvel rural'];
-    if (car) parts.push(car);
-    parts.push(pct);
-    return parts.join(' — ');
-  }).join('\n');
-  return [{ label: 'Propriedades', value, fullWidth: true }];
+  return rows;
 }
 
 function geometriaCadastral(raw, prepared) {

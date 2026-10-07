@@ -264,44 +264,17 @@ function featureName(feat, keys) {
   return 'Área identificada';
 }
 
-function nomeCarInema(feat, layer) {
-  const p = feat?.properties || {};
-  const tipo = featureName(feat, layer.nameKeys || []);
-  const ide = p.IDE_IMOVEL != null && String(p.IDE_IMOVEL).trim() ? String(p.IDE_IMOVEL).trim() : '';
-  if (ide && tipo && tipo !== 'Área identificada') return `${tipo} · imóvel ${ide}`;
-  if (ide) return `Imóvel ${ide}`;
-  return tipo;
-}
-
-function formatHaPt(n) {
-  if (!Number.isFinite(n) || n < 0) return '—';
-  return `${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha`;
-}
-
-function formatPctPt(n) {
-  if (!Number.isFinite(n) || n < 0) return '—';
-  const v = n < 0.1 && n > 0 ? n.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  return `${v}%`;
-}
-
-function nomePropriedade(props, imoveisById) {
+function propriedadeLigada(props, imoveisById) {
   const p = props || {};
   const ide = p.IDE_IMOVEL != null ? String(p.IDE_IMOVEL).trim() : '';
   const im = ide ? imoveisById.get(ide) : null;
   const nome = String(im?.DENOMINACA || '').trim().replace(/^["']+|["']+$/g, '');
-  if (nome) return nome;
-  if (ide) return `Imóvel ${ide}`;
-  return 'Imóvel rural';
-}
-
-function areaReservaHa(feat) {
-  const n = Number(feat?.properties?.AREA_DECLA);
-  if (Number.isFinite(n) && n > 0) return n;
-  try {
-    return geomAreaHa(feat);
-  } catch (_) {
-    return 0;
-  }
+  const car = String(im?.NUMERO_CAR || '').trim();
+  return {
+    nome: nome || (ide ? `Imóvel ${ide}` : 'Imóvel rural'),
+    car,
+    ide,
+  };
 }
 
 async function loadImoveisById(aoiBbox) {
@@ -438,7 +411,9 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
   let areaHa = 0;
   let aoiHa = 0;
   try { aoiHa = geomAreaHa(aoiFeat); } catch (_) {}
-  const imoveisById = layer.id === 'reserva_legal' ? await loadImoveisById(aoiBbox) : null;
+  const imoveisById = (layer.id === 'reserva_legal' || layer.id === 'app')
+    ? await loadImoveisById(aoiBbox)
+    : null;
   for (const src of sources) {
     let fc;
     try {
@@ -462,16 +437,21 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
       areaHa += ha;
       const isUc = layer.id === 'uc';
       const grupo = isUc ? grupoUc(f.properties || {}) : null;
+      const ligada = (layer.id === 'reserva_legal' || layer.id === 'app')
+        ? propriedadeLigada(f.properties || {}, imoveisById || new Map())
+        : null;
       let nome;
-      if (layer.id === 'reserva_legal') {
-        const prop = nomePropriedade(f.properties || {}, imoveisById || new Map());
-        const rlHa = areaReservaHa(f);
-        const pct = aoiHa > 0 ? (ha / aoiHa) * 100 : 0;
-        nome = `${prop} — reserva legal de ${formatHaPt(rlHa)}, sobreposição de ${formatHaPt(ha)} (${formatPctPt(pct)})`;
-      } else if (layer.id === 'app') {
-        nome = nomeCarInema(f, layer);
+      if (ligada) {
+        nome = ligada.nome;
       } else {
         nome = featureName(f, src.nameKeys || layer.nameKeys);
+      }
+      let tipo = '';
+      if (layer.id === 'reserva_legal' || layer.id === 'app') {
+        tipo = featureName(f, ['TIPO', 'tipo']);
+        if (!tipo || tipo === 'Área identificada') {
+          tipo = layer.id === 'app' ? 'APP' : 'Reserva legal';
+        }
       }
       const withEsfera = src.esfera ? `${nome} · ${src.esfera}` : nome;
       const categoria = isUc
@@ -479,6 +459,9 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
         : '';
       hits.push({
         nome,
+        propriedade: ligada?.nome || '',
+        car: ligada?.car || '',
+        tipo,
         display: formatUcNome(withEsfera, grupo),
         grupo,
         esfera: src.esfera || '',
@@ -532,6 +515,15 @@ async function cruzarCamada(aoiFeat, aoiBbox, layer) {
         pct: h.pct,
       }))
       : [],
+    restricoes: (layer.id === 'reserva_legal' || layer.id === 'app')
+      ? hits.slice(0, 40).map((h) => ({
+        propriedade: h.propriedade || h.nome || 'Imóvel rural',
+        car: h.car || '',
+        tipo: h.tipo || '—',
+        areaHa: h.areaHa,
+        pct: h.pct,
+      }))
+      : [],
   };
 }
 
@@ -543,7 +535,7 @@ async function cruzarAreaConsulta(aoiGeom) {
   if (!aoiFeat?.geometry) {
     return LAYERS.map((l) => ({
       id: l.id, label: l.label, sub: l.sub, fill: l.fill, stroke: l.stroke, legend: l.legend,
-      hit: false, count: 0, areaHa: 0, nomes: [], grupos: [], geoms: [], overlays: [], ucs: [],
+      hit: false, count: 0, areaHa: 0, nomes: [], grupos: [], geoms: [], overlays: [], ucs: [], restricoes: [],
     }));
   }
   let aoiBbox = null;
@@ -735,36 +727,10 @@ async function imoveisLigadosARlApp(aoiGeom) {
 }
 
 /**
- * Imóvel(is) rurais para Informações cadastrais.
- * Ponto: o polígono que contém a coordenada. Se o pino não cair dentro de nenhum,
- * usa o imóvel ligado à APP ou à reserva legal que cruza o buffer.
- * Polígono: todos os imóveis cruzados, com % da área analisada.
+ * Imóveis rurais que a área de análise cruza, com a porcentagem dessa área.
+ * Vale para polígono desenhado e para o buffer do ponto.
  */
-async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
-  if (isPoint) {
-    const lng = Number(Array.isArray(point) ? point[0] : point?.lng ?? point?.lon);
-    const lat = Number(Array.isArray(point) ? point[1] : point?.lat);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
-    const pad = 0.003;
-    const bbox = [lng - pad, lat - pad, lng + pad, lat + pad];
-    let fc;
-    try {
-      fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', bbox, 0);
-    } catch (_) {
-      return imoveisLigadosARlApp(aoiGeom);
-    }
-    for (const f of fc.features || []) {
-      if (!f?.geometry) continue;
-      try {
-        if (!pointInGeom([lng, lat], f)) continue;
-      } catch (_) {
-        continue;
-      }
-      return [{ ...dadosImovelRural(f), pct: null, geometry: f.geometry || null }];
-    }
-    return imoveisLigadosARlApp(aoiGeom);
-  }
-
+async function imoveisQueCruzamArea(aoiGeom) {
   const aoiFeat = asFeature(aoiGeom);
   if (!aoiFeat?.geometry) return [];
   let aoiBbox = null;
@@ -799,8 +765,39 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
     hits.push({ ...meta, ha, pct, geometry: f.geometry || null });
   }
   hits.sort((a, b) => (b.pct || 0) - (a.pct || 0));
-  if (hits.length) return hits;
-  return imoveisLigadosARlApp(aoiFeat);
+  return hits;
+}
+
+/**
+ * Imóvel(is) rurais para Informações cadastrais.
+ * Lista todos os que a área de análise cruza. Se nenhum polígono cruzar,
+ * usa o imóvel do ponto ou o ligado à APP/reserva legal.
+ */
+async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
+  const cruzados = await imoveisQueCruzamArea(aoiGeom);
+  if (cruzados.length) return cruzados;
+
+  if (isPoint) {
+    const lng = Number(Array.isArray(point) ? point[0] : point?.lng ?? point?.lon);
+    const lat = Number(Array.isArray(point) ? point[1] : point?.lat);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      const pad = 0.003;
+      const bbox = [lng - pad, lat - pad, lng + pad, lat + pad];
+      try {
+        const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', bbox, 0);
+        for (const f of fc.features || []) {
+          if (!f?.geometry) continue;
+          try {
+            if (!pointInGeom([lng, lat], f)) continue;
+          } catch (_) {
+            continue;
+          }
+          return [{ ...dadosImovelRural(f), pct: null, geometry: f.geometry || null }];
+        }
+      } catch (_) {}
+    }
+  }
+  return imoveisLigadosARlApp(aoiGeom);
 }
 
 async function identificarRlAppDoImovel(imoveis) {

@@ -194,6 +194,31 @@ Como conferir
   e ver o círculo mudar com o valor. O PDF mostra esse tamanho.
 
 
+7. Várias propriedades no cadastro e tabelas de reserva legal e APP — 07/10/2026
+--------------------------------------------------------------------------------
+
+Problema
+  Quando a área de análise cruzava mais de um imóvel rural, Informações
+  cadastrais mostrava só o imóvel debaixo do ponto. Reserva legal e APP
+  saíam num texto corrido, diferente da tabela de unidades de conservação.
+
+O que passou a valer
+  - Informações cadastrais lista cada imóvel que a área cruza, com nome,
+    CAR/CEFIR e porcentagem da área de análise.
+  - Reserva legal e APP usam a mesma tabela das unidades de conservação:
+    faixa de título mais escura e uma feição por linha, com propriedade,
+    tipo, hectares de sobreposição e porcentagem.
+
+Arquivos
+  - backend/relatorio/cruzamentos.js
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  Consultar uma área que pegue dois imóveis e baixar o laudo: os dois
+  aparecem em Informações cadastrais. Se houver reserva legal ou APP,
+  cada uma fica numa linha, sob o título cinza mais escuro.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
