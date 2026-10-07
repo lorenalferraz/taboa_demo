@@ -1,24 +1,26 @@
 /**
  * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
- * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Nada fica gravado
- * no sistema. Cada pedido cobre a tela atual, dentro da área dos municípios.
+ * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Na vista atual,
+ * inclusive a inicial, entram todos. A cor é a mesma dos alertas do MapBiomas.
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
+import { ALERT_STYLE } from './constants.js';
 import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
-import { applyLayerOrder, paneName, rendererFor } from './layerOrder.js';
+import { applyLayerOrder, paneName } from './layerOrder.js';
 
 const WFS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
 const TYPE_NAME = 'prodes-mata-atlantica-nb:yearly_deforestation';
-const MAX_FEATURES = 2500;
+const PAGE = 8000;
 
 let group = null;
+let canvas = null;
 let coverage = null;
 let loading = null;
 let moveHandler = null;
 let reqSeq = 0;
-let loadedKey = '';
+let loadedBounds = null;
 let attributionOn = false;
 
 function unionFeatures(features) {
@@ -32,7 +34,7 @@ function unionFeatures(features) {
     } catch (_) {}
   }
   if (!acc?.geometry) return null;
-  return turf.simplify(acc, { tolerance: 0.001, highQuality: false });
+  return turf.simplify(acc, { tolerance: 0.002, highQuality: false });
 }
 
 async function municipioFeatures() {
@@ -75,7 +77,7 @@ async function ensureCoverage() {
 }
 
 function viewSlice(map) {
-  const view = map.getBounds().pad(0.15);
+  const view = map.getBounds().pad(0.05);
   const lim = coverage.bounds;
   const south = Math.max(view.getSouth(), lim.getSouth());
   const north = Math.min(view.getNorth(), lim.getNorth());
@@ -85,7 +87,12 @@ function viewSlice(map) {
   return L.latLngBounds([south, west], [north, east]);
 }
 
-function featureUrl(bounds, count) {
+function covers(bounds) {
+  if (!loadedBounds) return false;
+  return loadedBounds.contains(bounds.getNorthWest()) && loadedBounds.contains(bounds.getSouthEast());
+}
+
+function featureUrl(bounds, count, startIndex) {
   const params = new URLSearchParams({
     service: 'WFS',
     version: '2.0.0',
@@ -94,14 +101,15 @@ function featureUrl(bounds, count) {
     outputFormat: 'application/json',
     srsName: 'EPSG:4674',
     bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},EPSG:4674`,
+    count: String(count),
+    startIndex: String(startIndex),
   });
-  if (count) params.set('count', String(count));
   return `${WFS_URL}?${params}`;
 }
 
 async function fetchGeoJson(url, seq) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 40000);
+  const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
     const resp = await fetch(url, { signal: ctrl.signal });
     if (!resp.ok) throw new Error('Falha ao baixar o PRODES.');
@@ -118,16 +126,6 @@ async function fetchGeoJson(url, seq) {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function yearColor(year) {
-  const y = Number(year);
-  if (!Number.isFinite(y)) return '#f59e0b';
-  const t = Math.min(1, Math.max(0, (y - 2004) / 21));
-  const r = Math.round(253 - t * 55);
-  const g = Math.round(214 - t * 130);
-  const b = Math.round(48 - t * 20);
-  return `rgb(${r},${g},${b})`;
 }
 
 function esc(value) {
@@ -161,13 +159,6 @@ function popupHtml(props) {
   return `<div class="popup-title">Desmatamento ${esc(year)}</div>${body}`;
 }
 
-function enableClick(lyr) {
-  if (lyr._path) lyr._path.style.pointerEvents = 'auto';
-  if (typeof lyr.eachLayer === 'function') {
-    lyr.eachLayer((child) => enableClick(child));
-  }
-}
-
 function showNote(text) {
   const el = document.getElementById('status');
   if (!el) return;
@@ -179,32 +170,20 @@ function showNote(text) {
 function hideNote() {
   const el = document.getElementById('status');
   if (!el) return;
-  if (String(el.textContent || '').startsWith('Aproxime o mapa')) el.hidden = true;
-}
-
-function insideFaixa(feat) {
-  if (!feat?.geometry) return false;
-  try {
-    return turf.booleanIntersects(feat, coverage.feature);
-  } catch (_) {
-    return false;
-  }
+  if (String(el.textContent || '').startsWith('Carregando os polígonos do PRODES')) el.hidden = true;
 }
 
 function ensureGroup(map) {
   if (!group) {
     if (!map.getPane(paneName('prodes'))) map.createPane(paneName('prodes'));
+    canvas = L.canvas({ pane: paneName('prodes'), padding: 0.5 });
     group = L.geoJSON({ type: 'FeatureCollection', features: [] }, {
       pane: paneName('prodes'),
-      renderer: rendererFor(map, 'prodes'),
+      renderer: canvas,
       interactive: true,
-      style(feat) {
-        const color = yearColor(feat?.properties?.year);
-        return { color, weight: 1.15, opacity: 0.95, fillColor: color, fillOpacity: 0.55 };
-      },
+      style: () => ({ ...ALERT_STYLE }),
       onEachFeature(feat, lyr) {
         lyr.bindPopup(popupHtml(feat?.properties || {}), { maxWidth: 360, autoPan: false });
-        lyr.on('add', () => enableClick(lyr));
       },
     });
   }
@@ -215,10 +194,48 @@ function ensureGroup(map) {
   return group;
 }
 
-function drawFeatures(features) {
+function enableCanvasClick() {
+  const el = canvas?._container;
+  if (el) el.style.pointerEvents = 'auto';
+}
+
+async function loadBounds(bounds, seq) {
   group.clearLayers();
-  if (features.length) group.addData({ type: 'FeatureCollection', features });
-  group.eachLayer((lyr) => enableClick(lyr));
+  const first = await fetchGeoJson(featureUrl(bounds, PAGE, 0), seq);
+  if (!first || seq !== reqSeq) return false;
+  const matched = Number(first.numberMatched ?? first.totalFeatures ?? first.features?.length ?? 0);
+  const pages = Math.max(1, Math.ceil(matched / PAGE));
+  let drawn = 0;
+
+  const addPage = async (data) => {
+    const features = data?.features || [];
+    if (!features.length || seq !== reqSeq) return;
+    group.addData({ type: 'FeatureCollection', features });
+    drawn += features.length;
+    showNote(`Carregando os polígonos do PRODES… ${drawn.toLocaleString('pt-BR')}`);
+    enableCanvasClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  await addPage(first);
+  let next = 1;
+  async function worker() {
+    while (next < pages) {
+      const page = next;
+      next += 1;
+      if (seq !== reqSeq) return;
+      const data = await fetchGeoJson(featureUrl(bounds, PAGE, page * PAGE), seq);
+      if (!data || seq !== reqSeq) return;
+      await addPage(data);
+    }
+  }
+  const workers = Math.min(3, Math.max(0, pages - 1));
+  if (workers) await Promise.all(Array.from({ length: workers }, () => worker()));
+  if (seq !== reqSeq) return false;
+  loadedBounds = bounds;
+  hideNote();
+  enableCanvasClick();
+  return true;
 }
 
 async function refresh(map) {
@@ -226,40 +243,18 @@ async function refresh(map) {
   const bounds = viewSlice(map);
   if (!bounds) {
     if (group) group.clearLayers();
+    loadedBounds = null;
     hideNote();
     return true;
   }
-  const key = [
-    map.getZoom(),
-    bounds.getWest().toFixed(3),
-    bounds.getSouth().toFixed(3),
-    bounds.getEast().toFixed(3),
-    bounds.getNorth().toFixed(3),
-  ].join(',');
-  if (key === loadedKey) return true;
-
-  const probe = await fetchGeoJson(featureUrl(bounds, 1), seq);
-  if (!probe || seq !== reqSeq) return false;
-  const matched = Number(probe.numberMatched ?? probe.totalFeatures ?? probe.features?.length ?? 0);
-  if (matched > MAX_FEATURES) {
-    group.clearLayers();
-    loadedKey = key;
-    showNote(`Aproxime o mapa para ver os polígonos do PRODES (${matched.toLocaleString('pt-BR')} nesta área).`);
-    return true;
-  }
-
-  const data = matched <= 1 ? probe : await fetchGeoJson(featureUrl(bounds), seq);
-  if (!data || seq !== reqSeq) return false;
-  const features = (data.features || []).filter(insideFaixa);
-  drawFeatures(features);
-  loadedKey = key;
-  hideNote();
-  return true;
+  if (covers(bounds) && group.getLayers().length) return true;
+  showNote('Carregando os polígonos do PRODES…');
+  return loadBounds(bounds, seq);
 }
 
 function detach(map) {
   reqSeq += 1;
-  loadedKey = '';
+  loadedBounds = null;
   hideNote();
   if (moveHandler) {
     map.off('moveend', moveHandler);
@@ -291,12 +286,13 @@ export async function setProdesVisible(map, visible) {
   try {
     const shown = await refresh(map);
     applyLayerOrder(map);
-    if (!shown && !loadedKey && reqSeq === before + 1) {
+    enableCanvasClick();
+    if (!shown && !loadedBounds && reqSeq === before + 1) {
       detach(map);
       throw new Error('Falha ao baixar o PRODES.');
     }
   } catch (err) {
-    if (!loadedKey) detach(map);
+    if (!loadedBounds) detach(map);
     throw err;
   }
 }

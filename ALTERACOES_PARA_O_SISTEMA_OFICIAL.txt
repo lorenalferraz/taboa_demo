@@ -540,6 +540,29 @@ Como conferir
   popup com o ano e a área.
 
 
+22. PRODES completo na vista inicial, cor do MapBiomas — 07/10/2026
+-------------------------------------------------------------------
+
+O que passou a valer
+  Ligar o PRODES na vista inicial desenha todos os polígonos daquela
+  tela, sem pedir para aproximar o mapa. A cor é a dos alertas do
+  MapBiomas: contorno e preenchimento #ef4444, preenchimento leve.
+  O clique continua abrindo ano, área, classe, imagem, estado e
+  satélite. Os polígonos seguem vindo ao vivo do WFS em GeoJSON.
+
+Por quê
+  O limite anterior escondia os polígonos até o zoom ficar alto, e a
+  cor por ano não era a simbologia do MapBiomas.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+
+Como conferir
+  Abrir o mapa na vista inicial, em Camadas ligar PRODES e esperar o
+  carregamento. As manchas vermelhas aparecem sem aproximar. Clicar
+  numa delas abre o popup.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
