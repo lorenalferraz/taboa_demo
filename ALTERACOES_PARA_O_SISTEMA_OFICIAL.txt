@@ -387,7 +387,22 @@ Como conferir
   a divisão no meio e a borda em volta.
 
 
-15. Limpar tira a seleção do mapa sem voltar o zoom — 07/10/2026
+15. Título centralizado na vertical no cabeçalho — 07/10/2026
+-------------------------------------------------------------
+
+O que passou a valer
+  O nome "Relatório de análise de Imóveis Rurais" fica no centro
+  vertical da célula da direita.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No topo do PDF, o título fica no meio da célula, nem colado no topo
+  nem na base.
+
+
+16. Limpar tira a seleção do mapa sem voltar o zoom — 07/10/2026
 ----------------------------------------------------------------
 
 O que passou a valer

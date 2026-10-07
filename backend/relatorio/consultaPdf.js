@@ -222,10 +222,11 @@ function drawHeader(doc, generatedAt) {
   const cellW = CONTENT_W / 2;
   const logoH = 30;
   const title = 'Relatório de análise de Imóveis Rurais';
+  const titleSize = 11;
   const titleInner = cellW - padX * 2;
-  doc.font(doc._sansBold).fontSize(11);
-  const titleH = doc.heightOfString(title, { width: titleInner, align: 'right' });
-  const rowH = Math.max(logoH, titleH) + padY * 2;
+  doc.font(doc._sansBold).fontSize(titleSize);
+  const wrapped = doc.heightOfString(title, { width: titleInner, align: 'right', lineGap: 0 });
+  const rowH = Math.max(logoH, wrapped) + padY * 2;
   doc.save();
   doc.lineWidth(0.9).strokeColor('#b0b8c0');
   doc.rect(MARGIN, top, CONTENT_W, rowH).stroke();
@@ -235,11 +236,11 @@ function drawHeader(doc, generatedAt) {
     const logoY = top + (rowH - logoH) / 2;
     try { doc.image(logo, MARGIN + padX, logoY, { height: logoH }); } catch (_) {}
   }
-  const titleY = top + (rowH - titleH) / 2;
-  doc.fillColor(NAVY).font(doc._sansBold).fontSize(11);
-  doc.text(title, MARGIN + cellW + padX, titleY, {
+  doc.fillColor(NAVY).font(doc._sansBold).fontSize(titleSize);
+  doc.text(title, MARGIN + cellW + padX, top + rowH / 2, {
     width: titleInner,
     align: 'right',
+    baseline: 'middle',
     lineGap: 0,
   });
   const rowBottom = top + rowH;
