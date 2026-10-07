@@ -762,6 +762,30 @@ Como conferir
   este arquivo de alterações aparece, nas seções históricas.
 
 
+29. Mapa não trava mais na abertura (recorte do PRODES) — 07/10/2026
+--------------------------------------------------------------------
+
+O que passou a valer
+  - O contorno usado para recortar a imagem do PRODES nos municípios é
+    montado a partir de cada município já simplificado, numa união só.
+    Antes, os 27 contornos completos (cerca de 56 mil vértices) eram
+    unidos um a um, e isso travava a página por cerca de 4 segundos ao
+    abrir ou dar F5: o mapa ficava sem desenhar até terminar.
+  - O resultado é o mesmo recorte de antes (mesma tolerância de
+    simplificação; diferença de área de 0,06%).
+
+Por quê
+  Desde que o PRODES passou a abrir ligado, essa união rodava logo na
+  abertura e congelava o mapa.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+
+Como conferir
+  Dar F5 no sistema: o mapa não some, e a imagem do PRODES aparece logo
+  depois do mapa base, sem pausa de alguns segundos.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

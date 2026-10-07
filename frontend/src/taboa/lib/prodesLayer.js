@@ -28,18 +28,26 @@ let reqSeq = 0;
 let loadedKey = '';
 let attributionOn = false;
 
+// Simplificar antes de unir: a união dos contornos completos (~56 mil vértices)
+// trava a página por uns 4 s na abertura.
 function unionFeatures(features) {
-  const list = features.filter((f) => f?.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
+  const list = features
+    .filter((f) => f?.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'))
+    .map((f) => turf.simplify(turf.feature(f.geometry), { tolerance: 0.0008, highQuality: false }));
   if (!list.length) return null;
-  let acc = turf.feature(list[0].geometry);
+  if (list.length === 1) return list[0];
+  try {
+    const all = turf.union(turf.featureCollection(list));
+    if (all?.geometry) return all;
+  } catch (_) {}
+  let acc = list[0];
   for (let i = 1; i < list.length; i += 1) {
     try {
-      const next = turf.union(turf.featureCollection([acc, turf.feature(list[i].geometry)]));
+      const next = turf.union(turf.featureCollection([acc, list[i]]));
       if (next?.geometry) acc = next;
     } catch (_) {}
   }
-  if (!acc?.geometry) return null;
-  return turf.simplify(acc, { tolerance: 0.0008, highQuality: false });
+  return acc?.geometry ? acc : null;
 }
 
 async function municipioFeatures() {
