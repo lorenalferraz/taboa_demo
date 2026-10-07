@@ -457,6 +457,33 @@ Como conferir
   os municípios da faixa. No restante da tela segue o satélite.
 
 
+19. PRODES visível e ordem municípios, PRODES, alertas — 07/10/2026
+-------------------------------------------------------------------
+
+O que passou a valer
+  Ligar o PRODES passa a mostrar a imagem ao vivo do INPE. O recorte
+  continua só no contorno dos municípios da faixa. A imagem não é
+  gravada no sistema: cada vez que o mapa para, o navegador pede de
+  novo o WMS do TerraBrasilis.
+  Na lista de camadas, e no mapa, a ordem de cima para baixo passa a
+  ser: municípios, PRODES, alertas. As demais camadas ficam abaixo
+  dos alertas.
+
+Por quê
+  A versão anterior recortava a imagem num canvas. A imagem do INPE
+  vem de outro site e o navegador apagava o recorte, então a camada
+  ligada não aparecia.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+  - frontend/src/taboa/lib/layerOrder.js
+
+Como conferir
+  Em Camadas, a primeira linha é Municípios, a segunda PRODES e a
+  terceira Alertas. Ligar PRODES e esperar a imagem colorida do INPE
+  só sobre os municípios. Mover o mapa pede a imagem de novo.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
