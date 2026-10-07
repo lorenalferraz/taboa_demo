@@ -1,11 +1,11 @@
 /**
  * Aba Consulta: coordenadas, KML (ponto/polígono), clique/desenho no mapa,
- * buffer de 500 m e relatório de cruzamento com alertas MapBiomas.
+ * buffer do ponto pela área da propriedade e relatório de cruzamento com alertas MapBiomas.
  */
 import L from 'leaflet';
 import { parseDMSCoord } from './registros.js';
 import { extractConsultaGeometryFromKml } from './kmlGeometry.js';
-import { buildConsultaAoi } from './consultaAoi.js';
+import { buildConsultaAoi, parseHectares } from './consultaAoi.js';
 import { buildConsultaReportHtml, buildConsultaPdfPayload, kindLabelPt, sourceLabelPt } from './consultaReport.js';
 import { formatHaPtBr } from './formatPtBr.js';
 import { getApiBase } from './config.js';
@@ -90,7 +90,15 @@ function cadastroPessoa() {
   return {
     nome: (document.getElementById('consultaNome')?.value || '').trim(),
     cpf: (document.getElementById('consultaCpf')?.value || '').trim(),
+    propriedadeHa: parseHectares(document.getElementById('consultaAreaHa')?.value),
   };
+}
+
+function formatMetros(m) {
+  const n = Number(m);
+  if (!Number.isFinite(n)) return '';
+  const rounded = n >= 10 ? Math.round(n) : Math.round(n * 10) / 10;
+  return `${String(rounded).replace('.', ',')} m`;
 }
 
 async function fetchShapeInBbox(file, bbox) {
@@ -204,6 +212,11 @@ export function setupConsultaTab(ctx) {
   const lngIn = document.getElementById('consultaLng');
   const nomeIn = document.getElementById('consultaNome');
   const cpfIn = document.getElementById('consultaCpf');
+  const areaHaIn = document.getElementById('consultaAreaHa');
+
+  function aoiOf(geom) {
+    return buildConsultaAoi(geom, { hectares: parseHectares(areaHaIn?.value) });
+  }
   const kmlIn = document.getElementById('consultaKml');
   const kmlFn = document.getElementById('consultaKmlFilename');
   const kmlErr = document.getElementById('consultaKmlErr');
@@ -346,7 +359,7 @@ export function setupConsultaTab(ctx) {
     const c = geometry?.feature?.geometry?.coordinates;
     if (geometry?.kind === 'point' && Array.isArray(c)) return { lat: c[1], lng: c[0] };
     try {
-      const aoi = buildConsultaAoi(geometry);
+      const aoi = aoiOf(geometry);
       if (aoi.ok && aoi.point?.geometry?.coordinates) {
         const [lng, lat] = aoi.point.geometry.coordinates;
         return { lat, lng };
@@ -378,7 +391,7 @@ export function setupConsultaTab(ctx) {
       geomStatus.textContent = '';
       return;
     }
-    const built = buildConsultaAoi(geometry);
+    const built = aoiOf(geometry);
     if (!built.ok) {
       geomStatus.hidden = false;
       geomStatus.classList.add('is-error');
@@ -403,7 +416,9 @@ export function setupConsultaTab(ctx) {
       geomStatus.textContent = `Área enviada: ${ha}`;
       return;
     }
-    const extra = built.mode === 'buffer' ? ' · buffer de 500 m' : '';
+    const extra = built.mode === 'buffer' && built.bufferMeters
+      ? ` · buffer de ${formatMetros(built.bufferMeters)}`
+      : '';
     geomStatus.textContent = ha
       ? `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra} · ${ha}`
       : `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra}.`;
@@ -413,7 +428,7 @@ export function setupConsultaTab(ctx) {
     clearPreview();
     const map = liveMap();
     if (!map || !geometry) return;
-    const built = buildConsultaAoi(geometry);
+    const built = aoiOf(geometry);
     if (!built.ok) return;
     const layers = [];
     layers.push(L.geoJSON(built.aoi, { style: () => AOI_STYLE, interactive: false }));
@@ -584,7 +599,7 @@ export function setupConsultaTab(ctx) {
     mapMode = mode;
     try { map.doubleClickZoom?.disable(); } catch (_) {}
     if (mode === 'point') {
-      setMapHint('Clique no mapa para inserir o ponto. Será gerado um buffer de 500 m.', true);
+      setMapHint('Clique no mapa para inserir o ponto. O buffer usa o tamanho da propriedade em hectares.', true);
     } else {
       setMapHint('Clique para marcar um vértice; a linha acompanha o cursor. Clique duplo adiciona o último vértice e fecha o polígono.', true);
     }
@@ -684,7 +699,13 @@ export function setupConsultaTab(ctx) {
       setKmlError('');
       setPointGeometry(latlng.lat, latlng.lng, 'map-point');
       cancelMapMode();
-      setStatus('Ponto inserido. Buffer de 500 m aplicado. Clique em Consultar.', false);
+      const built = aoiOf(geometry);
+      setStatus(
+        built.ok
+          ? `Ponto inserido. Buffer de ${formatMetros(built.bufferMeters)}. Clique em Consultar.`
+          : 'Ponto inserido. Informe o tamanho da propriedade em hectares para calcular o buffer.',
+        !built.ok,
+      );
       return;
     }
     if (mapMode !== 'polygon') return;
@@ -718,7 +739,7 @@ export function setupConsultaTab(ctx) {
       return;
     }
     applyCoordsFromInputs();
-    const built = buildConsultaAoi(geometry);
+    const built = aoiOf(geometry);
     if (!built.ok) {
       resultEl.hidden = false;
       resultEl.innerHTML = `<p class="consulta-result-msg consulta-result-err">${esc(built.error)}</p>`;
@@ -861,6 +882,7 @@ export function setupConsultaTab(ctx) {
     if (lngIn) lngIn.value = '';
     if (nomeIn) nomeIn.value = '';
     if (cpfIn) cpfIn.value = '';
+    if (areaHaIn) areaHaIn.value = '';
     if (kmlIn) kmlIn.value = '';
     if (munIn) munIn.value = '';
     if (imovelIn) {
@@ -877,6 +899,11 @@ export function setupConsultaTab(ctx) {
     setStatus('', false);
   }
 
+  areaHaIn?.addEventListener('input', () => {
+    if (geometry?.kind !== 'point') return;
+    updateGeomStatus();
+    paintPreview({ fly: false });
+  });
   latIn.addEventListener('input', () => applyCoordsFromInputs());
   lngIn.addEventListener('input', () => applyCoordsFromInputs());
   latIn.addEventListener('blur', () => applyCoordsFromInputs());

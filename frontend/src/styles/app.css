@@ -339,16 +339,11 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   flex-direction: column;
   gap: 2px;
 }
-.layers-wms-hint {
-  margin: 12px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
 .layer-row-item { list-style: none; }
 .layer-row-item[data-layer-id] {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 .layer-drag {
   display: flex;
@@ -357,7 +352,7 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   gap: 3px;
   width: 16px;
   height: 22px;
-  margin: 0;
+  margin: 0 2px 0 auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -368,7 +363,7 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   display: block;
   height: 2px;
   border-radius: 1px;
-  background: #64748b;
+  background: #d5dbe3;
 }
 .layer-drag:active { cursor: grabbing; }
 .layer-row-item.is-dragging { opacity: 0.45; }

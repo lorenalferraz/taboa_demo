@@ -200,6 +200,7 @@ function preparePayload(raw = {}) {
     point: raw.point,
     nome: txt(raw.nome),
     cpf: txt(raw.cpf),
+    propriedadeHa: Number(raw.propriedadeHa),
   };
 }
 
@@ -536,13 +537,19 @@ function drawCrossingCards(doc, y, cruzamentos) {
   return y;
 }
 
-function drawTamanhoPropriedade(doc, y, imoveis) {
-  const partes = [];
-  for (const im of imoveis || []) {
-    if (!(im.areaHa > 0)) continue;
-    partes.push(formatHa(im.areaHa));
+function drawTamanhoPropriedade(doc, y, imoveis, informadoHa) {
+  const ha = Number(informadoHa);
+  let value = '—';
+  if (Number.isFinite(ha) && ha > 0) {
+    value = formatHa(ha);
+  } else {
+    const partes = [];
+    for (const im of imoveis || []) {
+      if (!(im.areaHa > 0)) continue;
+      partes.push(formatHa(im.areaHa));
+    }
+    value = [...new Set(partes)].join(' · ') || '—';
   }
-  const value = [...new Set(partes)].join(' · ') || '—';
   const label = 'Tamanho da propriedade';
   const w = 168;
   const inner = w - CELL_PAD_X * 2;
@@ -932,8 +939,8 @@ async function buildConsultaPdf(raw = {}) {
     ];
     cadastro.push(...linhasImoveisCadastrais(imoveisCadastro));
     y = drawInfoTable(doc, y, cadastro);
-    if (payload.showBuffer || (imoveisCadastro || []).some((im) => im.areaHa > 0)) {
-      y = drawTamanhoPropriedade(doc, y, imoveisCadastro);
+    if (payload.propriedadeHa > 0 || payload.showBuffer || (imoveisCadastro || []).some((im) => im.areaHa > 0)) {
+      y = drawTamanhoPropriedade(doc, y, imoveisCadastro, payload.propriedadeHa);
     }
 
     y = drawSectionTitle(doc, y, 'RESULTADO ANALÍTICO DA CONSULTA');

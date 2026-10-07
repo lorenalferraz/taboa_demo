@@ -189,6 +189,10 @@ export default function App() {
                         <input type="text" id="consultaCpf" className="consulta-coord-input" placeholder="000.000.000-00" inputMode="numeric" autoComplete="off" maxLength={14} />
                       </label>
                     </div>
+                    <label className="consulta-coord-box">
+                      <span className="consulta-coord-name">Tamanho da propriedade (ha)</span>
+                      <input type="text" id="consultaAreaHa" className="consulta-coord-input" placeholder="Ex.: 329,07" inputMode="decimal" autoComplete="off" />
+                    </label>
                   </div>
                   <div className="consulta-field consulta-coords-field">
                     <span className="consulta-label">Coordenadas</span>
@@ -421,7 +425,6 @@ export default function App() {
                       </label>
                     </li>
                   </ul>
-                  <p className="layers-wms-hint">Arraste as três linhas para mudar qual camada fica por cima. A do topo da lista abre o popup.</p>
                 </div>
 
               </div>
@@ -495,7 +498,8 @@ export default function App() {
                   Este é o caminho prático da consulta. Use uma destas opções: par de coordenadas
                   (latitude e longitude, em decimal ou DMS); arquivo KML de ponto ou polígono
                   (linhas e KMZ não são aceitos); inserir ponto no mapa; ou desenhar um polígono no mapa.
-                  Ponto gera buffer de 500 m. Polígono é analisado na forma enviada.
+                  Em um ponto, o buffer tem a mesma área do tamanho da propriedade, em hectares.
+                  Polígono é analisado na forma enviada.
                 </p>
               </div>
             </li>
@@ -515,8 +519,9 @@ export default function App() {
               <div className="ajuda-step-body">
                 <h3>Preencha as informações cadastrais</h3>
                 <p>
-                  Informe Nome e CPF da pessoa consultada. Esses dados entram no quadro de informações
-                  cadastrais do relatório, junto com a origem da inserção, o município e a área de análise.
+                  Informe Nome, CPF e o tamanho da propriedade em hectares. O tamanho define o buffer
+                  quando a consulta parte de um ponto e entra no quadro de informações cadastrais do relatório,
+                  junto com a origem da inserção, o município e a área de análise.
                 </p>
               </div>
             </li>

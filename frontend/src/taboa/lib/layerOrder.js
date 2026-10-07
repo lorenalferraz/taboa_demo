@@ -100,7 +100,7 @@ export function bindLayerList(ul) {
     handle.draggable = true;
     handle.setAttribute('aria-label', 'Arrastar para mudar a ordem da camada');
     handle.innerHTML = '<span></span><span></span><span></span>';
-    li.insertBefore(handle, li.firstChild);
+    li.appendChild(handle);
     handle.addEventListener('dragstart', (ev) => {
       li.classList.add('is-dragging');
       ev.dataTransfer.effectAllowed = 'move';

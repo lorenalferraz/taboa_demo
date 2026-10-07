@@ -162,6 +162,38 @@ Como conferir
   mostra os hectares do cadastro, menor que as demais.
 
 
+6. Alça à direita e buffer pelo tamanho da propriedade — 07/10/2026
+-------------------------------------------------------------------
+
+Problema
+  As três linhas de arraste ficaram ao lado do seletor, em cinza escuro,
+  com um texto de instrução embaixo da lista. Na Consulta não havia onde
+  informar o tamanho da propriedade, e o ponto sempre gerava buffer de 500 m.
+
+O que passou a valer
+  - A alça de três linhas fica no canto direito de cada camada, em cinza
+    bem claro. O texto de instrução saiu.
+  - Em Informações cadastrais há o campo "Tamanho da propriedade (ha)".
+  - Quando a consulta é um ponto, o buffer é um círculo com essa área:
+    raio = raiz de (hectares × 10.000 / π). Sem o tamanho, o ponto não
+    gera buffer.
+  - No laudo, a caixa "Tamanho da propriedade" usa o valor digitado.
+
+Arquivos
+  - frontend/src/App.jsx
+  - frontend/src/styles/app.css
+  - frontend/src/taboa/lib/layerOrder.js
+  - frontend/src/taboa/lib/consultaAoi.js
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/lib/consultaReport.js
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  Na aba Camadas, as três linhas estão à direita e bem claras, sem texto
+  embaixo. Na Consulta, preencher o tamanho em hectares, inserir um ponto
+  e ver o círculo mudar com o valor. O PDF mostra esse tamanho.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

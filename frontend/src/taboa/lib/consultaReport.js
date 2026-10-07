@@ -103,6 +103,9 @@ export function buildConsultaPdfPayload(opts) {
     nome: String(nome || '').trim(),
     cpf: String(cpf || '').trim(),
     car: String(car || '').trim(),
+    propriedadeHa: Number.isFinite(Number(opts.propriedadeHa)) && Number(opts.propriedadeHa) > 0
+      ? Number(opts.propriedadeHa)
+      : null,
     alerts: alerts.map((a) => {
       const clip = a._clippedAreaHa;
       const pctArea = pctOrNull(clip, areaHa);
