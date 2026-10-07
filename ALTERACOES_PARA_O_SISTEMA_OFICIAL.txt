@@ -261,6 +261,26 @@ Como conferir
   sem o número do CAR.
 
 
+10. Sem a caixa Tamanho da propriedade — 07/10/2026
+---------------------------------------------------
+
+Problema
+  O laudo repetia o mesmo hectare em "Tamanho da propriedade" e em
+  "Área de análise".
+
+O que passou a valer
+  A célula "Tamanho da propriedade" saiu das informações cadastrais.
+  O hectare da consulta continua em "Área de análise". O campo da aba
+  Consulta permanece, porque é ele que calcula o buffer do ponto.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No laudo, as informações cadastrais não trazem "Tamanho da propriedade".
+  A área aparece só em "Área de análise".
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

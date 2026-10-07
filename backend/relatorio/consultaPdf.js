@@ -200,7 +200,6 @@ function preparePayload(raw = {}) {
     point: raw.point,
     nome: txt(raw.nome),
     cpf: txt(raw.cpf),
-    propriedadeHa: Number(raw.propriedadeHa),
   };
 }
 
@@ -569,17 +568,6 @@ function drawCrossingCards(doc, y, cruzamentos) {
     }]);
   }
   return y;
-}
-
-function valorTamanhoPropriedade(imoveis, informadoHa) {
-  const ha = Number(informadoHa);
-  if (Number.isFinite(ha) && ha > 0) return formatHa(ha);
-  const partes = [];
-  for (const im of imoveis || []) {
-    if (!(im.areaHa > 0)) continue;
-    partes.push(formatHa(im.areaHa));
-  }
-  return [...new Set(partes)].join(' · ') || '—';
 }
 
 function linhasImoveisCadastrais(imoveis) {
@@ -954,12 +942,6 @@ async function buildConsultaPdf(raw = {}) {
       { label: 'Município / UF', value: payload.mun },
       { label: 'Área de análise', value: payload.areaHa },
     ];
-    if (payload.propriedadeHa > 0 || payload.showBuffer || (imoveisCadastro || []).some((im) => im.areaHa > 0)) {
-      cadastro.push({
-        label: 'Tamanho da propriedade',
-        value: valorTamanhoPropriedade(imoveisCadastro, payload.propriedadeHa),
-      });
-    }
     cadastro.push(...linhasImoveisCadastrais(imoveisCadastro));
     y = drawInfoTable(doc, y, cadastro);
     if ((imoveisCadastro || []).length) {
