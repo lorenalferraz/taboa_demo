@@ -6,10 +6,6 @@ export const FAIXA_REGIOES = [
   { key: 'divisa', label: 'Divisa', color: '#06b6d4' },
 ];
 
-export function isFaixaAlertsMode(alerts) {
-  return Array.isArray(alerts) && alerts.some((a) => a._regiaoTaboa);
-}
-
 function fmtInt(n) {
   return Number(n || 0).toLocaleString('pt-BR');
 }
@@ -37,93 +33,48 @@ function fmtDatePt(iso) {
   return `${d}/${m}/${y}`;
 }
 
-export function buildFaixaAnalytics(alerts) {
-  const regions = {};
-  for (const r of FAIXA_REGIOES) {
-    regions[r.key] = { ...r, count: 0, area: 0 };
-  }
-
-  let areaTotal = 0;
-  const byYear = {};
-  const muniCounts = {};
-  const dates = [];
-
-  for (const a of alerts) {
-    const ha = Number(a.areaHa) || 0;
-    areaTotal += ha;
-
-    const reg = a._regiaoTaboa;
-    if (reg && regions[reg]) {
-      regions[reg].count += 1;
-      regions[reg].area += ha;
-    }
-
-    const dt = a.detectedAt || '';
-    if (dt) {
-      dates.push(dt);
-      const yr = dt.slice(0, 4);
-      if (!byYear[yr]) byYear[yr] = { count: 0, area: 0 };
-      byYear[yr].count += 1;
-      byYear[yr].area += ha;
-    }
-
-    for (const m of a._munNomesInFaixa || []) {
-      if (m) muniCounts[m] = (muniCounts[m] || 0) + 1;
-    }
-  }
-
-  dates.sort();
-  let mediaDiaria = 0;
-  if (dates.length > 1) {
-    const days = Math.max(
-      1,
-      Math.ceil((new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000),
-    );
-    mediaDiaria = areaTotal / days;
-  }
-
-  const total = alerts.length;
-  const regionList = FAIXA_REGIOES
-    .map((r) => regions[r.key])
-    .filter((r) => r.count > 0);
-
-  const topMunis = Object.entries(muniCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-
-  const years = Object.keys(byYear).sort();
-  const maxYearCount = years.length ? Math.max(...years.map((y) => byYear[y].count)) : 1;
-
-  return {
-    total,
-    areaTotal,
-    mediaDiaria,
-    mediaPorAlerta: total ? areaTotal / total : 0,
-    muniCount: Object.keys(muniCounts).length,
-    periodStart: dates[0] || '',
-    periodEnd: dates[dates.length - 1] || '',
-    regions: regionList,
-    byYear,
-    years,
-    maxYearCount,
-    topMunis,
-    maxMuniCount: topMunis.length ? topMunis[0][1] : 1,
-  };
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-export function renderFaixaAnalyticsHtml(stats) {
-  const {
-    total, areaTotal, mediaDiaria, mediaPorAlerta, muniCount,
-    periodStart, periodEnd, regions, byYear, years, maxYearCount, topMunis, maxMuniCount,
-  } = stats;
+/** Painel analítico do PRODES (desmatamento de 2020 em diante nos municípios). */
+export function renderProdesAnalyticsHtml(data) {
+  const total = Number(data?.total) || 0;
+  const areaTotal = Number(data?.areaHa) || 0;
+  const byYear = data?.byYear || {};
+  const byMun = data?.byMun || {};
+  const byRegiao = data?.byRegiao || {};
+  const periodStart = data?.periodStart || '';
+  const periodEnd = data?.periodEnd || '';
+
+  if (!total) {
+    return '<div class="analytic-empty">Nenhum desmatamento do PRODES desde 2020 nos municípios.</div>';
+  }
+
+  let mediaDiaria = 0;
+  if (periodStart && periodEnd) {
+    const days = Math.max(1, Math.ceil((new Date(periodEnd) - new Date(periodStart)) / 86400000));
+    mediaDiaria = areaTotal / days;
+  }
+  const munEntries = Object.entries(byMun).sort((a, b) => b[1].area - a[1].area);
+  const muniCount = munEntries.length;
+  const topMunis = munEntries.slice(0, 5);
+  const maxMuniArea = topMunis.length ? topMunis[0][1].area : 1;
+
+  const regions = FAIXA_REGIOES
+    .map((r) => ({ ...r, count: byRegiao[r.key]?.count || 0, area: byRegiao[r.key]?.area || 0 }))
+    .filter((r) => r.count > 0);
+
+  const years = Object.keys(byYear).sort();
+  const maxYearArea = years.length ? Math.max(...years.map((y) => byYear[y].area)) : 1;
 
   const periodLabel = periodStart && periodEnd
     ? `${fmtDatePt(periodStart)} — ${fmtDatePt(periodEnd)}`
-    : 'Período do filtro';
-
-  const sourceKicker = 'MapBiomas · faixa 05/06/07';
-
-  const sourceLegend = '';
+    : `Desde ${data?.minYear || 2020}`;
 
   const stackSegments = regions.map((r) => {
     const w = total ? (r.count / total) * 100 : 0;
@@ -131,7 +82,6 @@ export function renderFaixaAnalyticsHtml(stats) {
   }).join('');
 
   const regionCards = regions.map((r) => {
-    const pctCount = fmtPct(r.count, total);
     const barW = total ? (r.count / total) * 100 : 0;
     return `<div class="ap-reg-card">
       <div class="ap-reg-card-head">
@@ -141,42 +91,40 @@ export function renderFaixaAnalyticsHtml(stats) {
       </div>
       <div class="ap-reg-bar-wrap"><div class="ap-reg-bar" style="width:${Math.max(2, barW)}%;background:${r.color}"></div></div>
       <div class="ap-reg-meta">
-        <span>${pctCount} dos alertas</span>
+        <span>${fmtPct(r.count, total)} dos polígonos</span>
         <span>${fmtHaFull(r.area)} ha · ${fmtPct(r.area, areaTotal)} área</span>
       </div>
     </div>`;
   }).join('');
 
   const yGridPcts = [0, 25, 50, 75, 100];
-  function fmtK(n) { return n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n); }
   const yGridLines = yGridPcts.map((p) =>
-    `<div class="ap-ygrid-line" style="bottom:${p}%"><span>${fmtK(Math.round(maxYearCount * p / 100))}</span></div>`,
+    `<div class="ap-ygrid-line" style="bottom:${p}%"><span>${fmtHa(maxYearArea * p / 100, 0)}</span></div>`,
   ).join('');
   const yearCols = years.map((y) => {
-    const pct = maxYearCount > 0 ? (byYear[y].count / maxYearCount) * 100 : 0;
+    const pct = maxYearArea > 0 ? (byYear[y].area / maxYearArea) * 100 : 0;
     return `<div class="ap-ycol">
       <div class="ap-ycol-bar-wrap">
-        <div class="ap-ycol-bar ap-ycol-bar-faixa" style="height:${Math.max(3, pct)}%" title="${y}: ${byYear[y].count} alertas · ${fmtHaFull(byYear[y].area)} ha"></div>
+        <div class="ap-ycol-bar ap-ycol-bar-faixa" style="height:${Math.max(3, pct)}%" title="${y}: ${fmtInt(byYear[y].count)} polígonos · ${fmtHaFull(byYear[y].area)} ha"></div>
       </div>
       <div class="ap-ycol-lbl">${y.slice(2)}</div>
     </div>`;
   }).join('');
 
-  const muniRows = topMunis.map(([nome, n]) => {
-    const pct = (n / maxMuniCount) * 100;
+  const muniRows = topMunis.map(([nome, v]) => {
+    const pct = (v.area / maxMuniArea) * 100;
     return `<div class="ap-muni-row">
-      <div class="ap-muni-name" title="${nome}">${nome}</div>
+      <div class="ap-muni-name" title="${esc(nome)}">${esc(nome)}</div>
       <div class="ap-muni-bar-wrap"><div class="ap-muni-bar" style="width:${Math.max(4, pct)}%"></div></div>
-      <div class="ap-muni-count">${n}</div>
+      <div class="ap-muni-count">${fmtHa(v.area, 0)} ha</div>
     </div>`;
   }).join('');
 
   return `
     <div class="ap-faixa-hero">
-      <div class="ap-faixa-hero-kicker">${sourceKicker}</div>
-      <div class="ap-faixa-hero-total">${fmtInt(total)}<span> alertas</span></div>
+      <div class="ap-faixa-hero-kicker">PRODES · INPE · desde ${data?.minYear || 2020}</div>
+      <div class="ap-faixa-hero-total">${fmtInt(total)}<span> polígonos de desmatamento</span></div>
       <div class="ap-faixa-hero-sub">${periodLabel}${muniCount ? ` · ${muniCount} município(s)` : ''}</div>
-      ${sourceLegend}
     </div>
 
     <div class="ap-metrics ap-metrics-grid">
@@ -185,8 +133,8 @@ export function renderFaixaAnalyticsHtml(stats) {
         <div class="ap-metric-lbl">hectares</div>
       </div>
       <div class="ap-metric">
-        <div class="ap-metric-val">${fmtHa(mediaPorAlerta)}</div>
-        <div class="ap-metric-lbl">ha / alerta</div>
+        <div class="ap-metric-val">${fmtHa(total ? areaTotal / total : 0)}</div>
+        <div class="ap-metric-lbl">ha / polígono</div>
       </div>
       <div class="ap-metric">
         <div class="ap-metric-val">${fmtHa(mediaDiaria)}</div>
@@ -198,15 +146,16 @@ export function renderFaixaAnalyticsHtml(stats) {
       </div>
     </div>
 
+    ${regions.length > 1 ? `
     <div class="ap-section">
       <div class="ap-section-title">Distribuição por região</div>
       <div class="ap-reg-stack" aria-hidden="true">${stackSegments}</div>
       <div class="ap-reg-cards">${regionCards}</div>
-    </div>
+    </div>` : ''}
 
     ${years.length ? `
     <div class="ap-section">
-      <div class="ap-section-title">Evolução anual</div>
+      <div class="ap-section-title">Área desmatada por ano (ha)</div>
       <div class="ap-year-chart">
         <div class="ap-ygrid">${yGridLines}</div>
         <div class="ap-ycols">${yearCols}</div>
@@ -215,8 +164,9 @@ export function renderFaixaAnalyticsHtml(stats) {
 
     ${topMunis.length ? `
     <div class="ap-section">
-      <div class="ap-section-title">Municípios com mais alertas</div>
+      <div class="ap-section-title">Municípios com mais área desmatada</div>
       <div class="ap-muni-list">${muniRows}</div>
     </div>` : ''}
   `;
 }
+

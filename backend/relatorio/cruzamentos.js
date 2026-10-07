@@ -948,8 +948,132 @@ async function cruzarProdes(aoiGeom) {
   };
 }
 
+const RESUMO_TTL_MS = 6 * 60 * 60 * 1000;
+let resumoCache = null;
+
+async function fetchProdesResumoPages(bbox) {
+  const [west, south, east, north] = bbox;
+  const cql = `year >= ${PRODES_MIN_YEAR} AND BBOX(geom,${west},${south},${east},${north},'EPSG:4674')`;
+  const page = 5000;
+  const features = [];
+  for (let start = 0; start < 60000; start += page) {
+    const params = new URLSearchParams({
+      service: 'WFS',
+      version: '2.0.0',
+      request: 'GetFeature',
+      typeName: PRODES_LAYER,
+      outputFormat: 'application/json',
+      srsName: 'EPSG:4674',
+      propertyName: 'year,image_date,area_km,geom',
+      sortBy: 'fid',
+      CQL_FILTER: cql,
+      count: String(page),
+      startIndex: String(start),
+    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 40000);
+    let data;
+    try {
+      const resp = await fetch(`${PRODES_WFS}?${params}`, { signal: ctrl.signal });
+      if (!resp.ok) throw new Error('Falha ao consultar o PRODES.');
+      data = await resp.json();
+    } finally {
+      clearTimeout(timer);
+    }
+    const batch = data?.features || [];
+    features.push(...batch);
+    if (batch.length < page) break;
+  }
+  return features;
+}
+
+function firstVertex(geom) {
+  let pt = null;
+  walkCoords(geom, (c) => {
+    if (!pt) pt = [Number(c[0]), Number(c[1])];
+  });
+  return pt;
+}
+
+/**
+ * Totais do PRODES de 2020 em diante dentro dos municípios do shape:
+ * por ano, por município e por região.
+ */
+async function resumoProdesMunicipios() {
+  if (resumoCache && Date.now() - resumoCache.at < RESUMO_TTL_MS) return resumoCache.data;
+  const munFc = await loadMunicipiosWgs84();
+  const muns = (munFc.features || [])
+    .filter((f) => f?.geometry)
+    .map((f) => ({
+      nome: String(f.properties?.nomMun || f.properties?.nm_mun || '').trim(),
+      regiao: f.properties?._regiaoTaboa || '',
+      bbox: geomBbox(f),
+      geometry: f.geometry,
+    }))
+    .filter((m) => m.bbox);
+  if (!muns.length) throw new Error('Municípios indisponíveis.');
+  const all = muns.reduce((acc, m) => [
+    Math.min(acc[0], m.bbox[0]), Math.min(acc[1], m.bbox[1]),
+    Math.max(acc[2], m.bbox[2]), Math.max(acc[3], m.bbox[3]),
+  ], [Infinity, Infinity, -Infinity, -Infinity]);
+  const features = await fetchProdesResumoPages(all);
+
+  const byYear = {};
+  const byMun = {};
+  const byRegiao = {};
+  let total = 0;
+  let areaHa = 0;
+  let first = '';
+  let last = '';
+  for (const feat of features) {
+    const year = Number(feat?.properties?.year);
+    if (!Number.isFinite(year) || year < PRODES_MIN_YEAR) continue;
+    const pt = firstVertex(feat.geometry);
+    if (!pt) continue;
+    const mun = muns.find((m) => pt[0] >= m.bbox[0] && pt[0] <= m.bbox[2]
+      && pt[1] >= m.bbox[1] && pt[1] <= m.bbox[3] && pointInGeom(pt, m.geometry));
+    if (!mun) continue;
+    const km = Number(feat.properties.area_km);
+    const ha = Number.isFinite(km) ? km * 100 : geomAreaHa(feat);
+    total += 1;
+    areaHa += ha;
+    const y = String(year);
+    if (!byYear[y]) byYear[y] = { count: 0, area: 0 };
+    byYear[y].count += 1;
+    byYear[y].area += ha;
+    if (!byMun[mun.nome]) byMun[mun.nome] = { count: 0, area: 0 };
+    byMun[mun.nome].count += 1;
+    byMun[mun.nome].area += ha;
+    if (mun.regiao) {
+      if (!byRegiao[mun.regiao]) byRegiao[mun.regiao] = { count: 0, area: 0 };
+      byRegiao[mun.regiao].count += 1;
+      byRegiao[mun.regiao].area += ha;
+    }
+    const d = String(feat.properties.image_date || '').slice(0, 10);
+    if (d) {
+      if (!first || d < first) first = d;
+      if (!last || d > last) last = d;
+    }
+  }
+  const data = {
+    total,
+    areaHa,
+    minYear: PRODES_MIN_YEAR,
+    periodStart: first,
+    periodEnd: last,
+    byYear,
+    byMun,
+    byRegiao,
+    municipios: muns.length,
+    updatedAt: new Date().toISOString(),
+  };
+  resumoCache = { at: Date.now(), data };
+  return data;
+}
+
 exports.cruzarAreaConsulta = cruzarAreaConsulta;
 exports.cruzarProdes = cruzarProdes;
+exports.resumoProdesMunicipios = resumoProdesMunicipios;
 exports.identificarMunicipios = identificarMunicipios;
 exports.identificarImoveisCadastrais = identificarImoveisCadastrais;
 exports.identificarRlAppDoImovel = identificarRlAppDoImovel;

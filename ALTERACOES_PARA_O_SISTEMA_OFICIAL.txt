@@ -642,6 +642,48 @@ Como conferir
   abre o ano 2025.
 
 
+26. Legenda do mapa do PDF, PRODES ligado e painel analítico do PRODES — 07/10/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - A legenda do mapa do relatório lista só as camadas cujo contorno
+    aparece dentro do quadro do mapa. Uma camada cruzada que fica toda
+    fora do recorte, ou que cobre o mapa inteiro sem mostrar a borda
+    (como uma UC estadual grande), não entra mais na legenda. Ela
+    continua nas restrições legais do relatório.
+  - O PRODES abre ligado, junto com os alertas do MapBiomas. O Resetar
+    também volta com o PRODES ligado.
+  - O painel analítico deixa de mostrar o MapBiomas e passa a mostrar
+    só o PRODES de 2020 em diante dentro dos municípios: total de
+    polígonos, período das imagens, hectares, ha por polígono, ha por
+    dia, número de municípios, área desmatada por ano e os cinco
+    municípios com mais área desmatada. O número no topo do painel é o
+    total de polígonos do PRODES.
+  - Nova rota da API: GET /api/prodes/resumo. Ela consulta o WFS do
+    INPE ao vivo, atribui cada polígono ao município pelo primeiro
+    vértice e guarda o resultado por 6 horas.
+
+Por quê
+  A legenda mostrava UC estadual sem a UC aparecer no mapa. O PRODES
+  passa a ser a camada de referência do painel e deve estar visível na
+  abertura.
+
+Arquivos
+  - backend/relatorio/mapaSatelite.js
+  - backend/relatorio/cruzamentos.js
+  - backend/server.js
+  - frontend/src/App.jsx
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/taboa/lib/analyticsPanel.js
+
+Como conferir
+  Abrir o sistema: o PRODES aparece ligado e, ao abrir o painel
+  analítico, os números são do PRODES (cerca de 4.600 polígonos e
+  15.400 ha em 07/10/2026). Gerar o relatório de uma área dentro de
+  uma UC estadual grande: a legenda do mapa não lista UC estadual se
+  a borda dela não aparece na imagem.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

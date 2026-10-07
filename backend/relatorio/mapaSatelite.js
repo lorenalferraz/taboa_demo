@@ -456,11 +456,36 @@ async function renderSatelliteMap(opts = {}) {
   const shapes = [];
   const legend = [];
   const seenLegend = new Set();
+  // A legenda só lista o que tem contorno visível no quadro: um polígono que
+  // cobre o mapa inteiro tem a borda fora da imagem e não aparece.
+  const segmentInFrame = (a, b) => {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const edges = [[-dx, a[0]], [dx, outW - a[0]], [-dy, a[1]], [dy, outH - a[1]]];
+    for (const [p, q] of edges) {
+      if (p === 0) {
+        if (q < 0) return false;
+        continue;
+      }
+      const r = q / p;
+      if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+      else { if (r < t0) return false; if (r < t1) t1 = r; }
+    }
+    return true;
+  };
+  const inFrame = (shape) => shape.rings.some((ring) => {
+    for (let i = 0; i < ring.length; i++) {
+      if (segmentInFrame(ring[i], ring[(i + 1) % ring.length])) return true;
+    }
+    return false;
+  });
   const push = (geom, fill, stroke, label) => {
     const next = shapeFromGeom(geom, toPx, scale, fill, stroke);
     if (!next.length) return;
     shapes.push(...next);
-    if (label && !seenLegend.has(label)) {
+    if (label && !seenLegend.has(label) && next.some(inFrame)) {
       seenLegend.add(label);
       legend.push({ fill, stroke, label });
     }

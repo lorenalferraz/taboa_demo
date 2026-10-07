@@ -430,7 +430,7 @@ export default function App() {
                           className="toggle-switch"
                           style={{ '--layer-color': '#d97706', '--layer-color-soft': '#fcd34d' }}
                         >
-                          <input type="checkbox" id="chkProdes" aria-label="PRODES desmatamento. Fonte: INPE" />
+                          <input type="checkbox" id="chkProdes" defaultChecked aria-label="PRODES desmatamento. Fonte: INPE" />
                           <span className="toggle-switch-slider" aria-hidden="true" />
                         </span>
                         <span className="layer-row-text">

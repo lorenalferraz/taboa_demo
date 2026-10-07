@@ -51,7 +51,7 @@ import { normalizeFaixaShapeGeoJSON } from './lib/faixaShapeNormalize.js';
 import { pickShapeFilename } from './lib/shapePick.js';
 import { applyLightTheme } from './lib/theme.js';
 import { clearCreds } from './lib/credentials.js';
-import { isFaixaAlertsMode, buildFaixaAnalytics, renderFaixaAnalyticsHtml } from './lib/analyticsPanel.js';
+import { renderProdesAnalyticsHtml } from './lib/analyticsPanel.js';
 import { yieldToMain } from './lib/yieldToMain.js';
 import {
   initPeriodFilter,
@@ -1290,8 +1290,10 @@ export function bootstrapTaboa() {
       if (shape) shape.checked = false;
       const alerts = document.getElementById('chkMapBiomas');
       if (alerts) alerts.checked = true;
+      const prodes = document.getElementById('chkProdes');
+      if (prodes) prodes.checked = true;
       document.querySelectorAll('#remoteWmsLayersWrap .remote-wms-legend input[type="checkbox"]').forEach((inp) => {
-        if (inp.id === 'chkShape' || inp.id === 'chkMapBiomas') return;
+        if (inp.id === 'chkShape' || inp.id === 'chkMapBiomas' || inp.id === 'chkProdes') return;
         inp.checked = false;
       });
     }
@@ -1327,7 +1329,7 @@ export function bootstrapTaboa() {
       syncLayerCheckboxesToDefault();
       toggleShapeLayer(false);
       toggleMapBiomasLayer(true);
-      setProdesVisible(map, false).catch(() => {});
+      setProdesVisible(map, true).catch(() => {});
       resetMapViewToDefault();
       setStatus('Filtros e mapa restaurados ao padrão.');
 
@@ -1505,212 +1507,40 @@ export function bootstrapTaboa() {
       updateAnalyticPanel();
     }
 
+    let prodesResumo = null;
+    let prodesResumoErro = false;
+    let prodesResumoLoading = null;
+
+    function loadProdesResumo() {
+      if (prodesResumoLoading) return prodesResumoLoading;
+      prodesResumoErro = false;
+      prodesResumoLoading = fetch(`${API_BASE}/api/prodes/resumo`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data?.ok) throw new Error(data?.error || 'Falha no resumo do PRODES.');
+          prodesResumo = data;
+        })
+        .catch((e) => {
+          console.warn('resumo PRODES:', e);
+          prodesResumoErro = true;
+          prodesResumoLoading = null;
+        })
+        .finally(() => updateAnalyticPanel());
+      return prodesResumoLoading;
+    }
+
     function updateAnalyticPanel() {
       const body = document.getElementById('analyticsPanelBody');
       const countEl = document.getElementById('analyticsAlertsCount');
       if (!body) return;
-
-      const alerts = currentAlertsFlat;
-      const abp = currentAlertsByPolygon;
-      const allFeatures = currentAllFeatures;
-      const selectedSorted = [...selectedShapeIndices].sort((a, b) => a - b);
-
-      if (countEl) countEl.textContent = alerts.length || '—';
-
-      if (alerts.length === 0) {
-        body.innerHTML = '<div class="analytic-empty">Carregue os dados para visualizar o painel analítico.</div>';
-        return;
+      if (countEl) countEl.textContent = prodesResumo ? prodesResumo.total.toLocaleString('pt-BR') : '—';
+      if (prodesResumo) {
+        body.innerHTML = renderProdesAnalyticsHtml(prodesResumo);
+      } else if (prodesResumoErro) {
+        body.innerHTML = '<div class="analytic-empty">Não foi possível carregar o resumo do PRODES.</div>';
+      } else {
+        body.innerHTML = '<div class="analytic-empty">Carregando o resumo do PRODES…</div>';
       }
-
-      // â”€â”€ Agrega dados por shape (usa área recortada) â”€â”€â”€â”€â”€â”€â”€
-      // Área e gráficos usam alertsByPolygon por shape para somar apenas a
-      // porção de cada alerta que cai dentro daquele shape (_clippedAreaHa).
-      // Contagem de alertas usa currentAlertsFlat (deduplicado por alertCode).
-      if (isFaixaAlertsMode(alerts)) {
-        body.innerHTML = renderFaixaAnalyticsHtml(buildFaixaAnalytics(alerts));
-        return;
-      }
-
-      let areaTotal = 0;
-      const byYear = {};       // year → { count, area }
-      const byYearMonth = {};  // `${year}-${month}` → area
-      const seenForCount = new Set();
-      for (const idx of selectedSorted) {
-        for (const a of alertsArrayForFeatureIndex(abp, idx)) {
-          const ha = Number(a._clippedAreaHa ?? a.areaHa) || 0;
-          areaTotal += ha;
-          const dt = a.detectedAt || '';
-          if (dt) {
-            const yr = dt.slice(0, 4);
-            const mo = dt.slice(5, 7);
-            if (!byYear[yr]) byYear[yr] = { count: 0, area: 0 };
-            byYear[yr].area += ha;
-            const ym = `${yr}-${mo}`;
-            byYearMonth[ym] = (byYearMonth[ym] || 0) + ha;
-            // count deduplica por alertCode
-            if (!seenForCount.has(a.alertCode)) {
-              seenForCount.add(a.alertCode);
-              byYear[yr].count += 1;
-            }
-          }
-        }
-      }
-      const years = Object.keys(byYear).sort();
-
-      // Média diária global
-      let mediaDiaria = 0;
-      const sortedDates = alerts.map((a) => a.detectedAt).filter(Boolean).sort();
-      if (sortedDates.length > 1) {
-        const days = Math.max(1, Math.ceil((new Date(sortedDates[sortedDates.length - 1]) - new Date(sortedDates[0])) / 86400000));
-        mediaDiaria = areaTotal / days;
-      }
-
-      // ── Maior Desmatamento e Maior Velocidade por shape ──
-      let maiorDesmatShape = null, maiorDesmatHa = 0;
-      let maiorVelShape = null, maiorVelHaDia = 0;
-      for (const idx of selectedSorted) {
-        const f = allFeatures[idx];
-        const nome = featureNomePublico(f, idx);
-        const mun = f?.properties?.municipio || f?.properties?.nomMun || '';
-        const label = nome + (mun ? `, ${mun}` : '');
-        const shapeAlerts = alertsArrayForFeatureIndex(abp, idx);
-        if (!shapeAlerts.length) continue;
-        const shapeArea = shapeAlerts.reduce((s, a) => s + (Number(a._clippedAreaHa ?? a.areaHa) || 0), 0);
-        if (shapeArea > maiorDesmatHa) { maiorDesmatHa = shapeArea; maiorDesmatShape = label; }
-        const sd = shapeAlerts.map((a) => a.detectedAt).filter(Boolean).sort();
-        let vel = shapeArea;
-        if (sd.length > 1) {
-          const d = Math.max(1, Math.ceil((new Date(sd[sd.length - 1]) - new Date(sd[0])) / 86400000));
-          vel = shapeArea / d;
-        }
-        if (vel > maiorVelHaDia) { maiorVelHaDia = vel; maiorVelShape = label; }
-      }
-
-      // â”€â”€ Gráfico: Evolução do total de alertas (anual) â”€â”€â”€â”€
-      const maxYearCount = years.length ? Math.max(...years.map((y) => byYear[y].count)) : 1;
-      function fmtK(n) { return n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n); }
-      const yGridPcts = [0, 25, 50, 75, 100];
-      const yGridLines = yGridPcts.map((p) =>
-        `<div class="ap-ygrid-line" style="bottom:${p}%"><span>${fmtK(Math.round(maxYearCount * p / 100))}</span></div>`
-      ).join('');
-      const yearCols = years.map((y) => {
-        const pct = maxYearCount > 0 ? (byYear[y].count / maxYearCount) * 100 : 0;
-        return `<div class="ap-ycol">
-          <div class="ap-ycol-bar-wrap">
-            <div class="ap-ycol-bar" style="height:${Math.max(3, pct)}%" title="${y}: ${byYear[y].count} alertas"></div>
-          </div>
-          <div class="ap-ycol-lbl">${y}</div>
-        </div>`;
-      }).join('');
-
-      // â”€â”€ Gráfico: Evolução mensal agrupada por ano â”€â”€â”€â”€â”€â”€â”€â”€
-      const YEAR_COLORS = ['#ef4444','#3b82f6','#06b6d4','#f97316','#22d3ee','#22c55e','#eab308','#a855f7'];
-      const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
-      const maxMonthly = Math.max(1, ...MONTHS.flatMap((mo) => years.map((y) => byYearMonth[`${y}-${mo}`] || 0)));
-      const monthGroups = MONTHS.map((mo, mi) => {
-        const bars = years.map((y, yi) => {
-          const v = byYearMonth[`${y}-${mo}`] || 0;
-          const pct = (v / maxMonthly) * 100;
-          return `<div class="ap-mbar" style="height:${Math.max(2, pct)}%;background:${YEAR_COLORS[yi % YEAR_COLORS.length]}" title="${y}/${mo}: ${v.toFixed(0)} ha"></div>`;
-        }).join('');
-        return `<div class="ap-mgroup">
-          <div class="ap-mgroup-bars">${bars}</div>
-          <div class="ap-mgroup-lbl">${String(mi + 1).padStart(2, '0')}</div>
-        </div>`;
-      }).join('');
-      function fmtHa(n) {
-        if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-        if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
-        return n.toFixed(0);
-      }
-      const yGridMonthly = yGridPcts.map((p) =>
-        `<div class="ap-ygrid-line" style="bottom:${p}%"><span>${fmtHa(maxMonthly * p / 100)}</span></div>`
-      ).join('');
-      const legend = years.map((y, i) =>
-        `<span class="ap-legend-item"><span class="ap-legend-dot" style="background:${YEAR_COLORS[i % YEAR_COLORS.length]}"></span>${y}</span>`
-      ).join('');
-
-      // ── Por shape ────────────────────────────────────────
-      const shapeRows = selectedSorted.map((idx) => {
-        const f = allFeatures[idx];
-        const nome = featureNomePublico(f, idx);
-        const mun = f?.properties?.municipio || f?.properties?.nomMun || '';
-        const shapeAlerts = alertsArrayForFeatureIndex(abp, idx);
-        if (!shapeAlerts.length) return '';
-        const shapeArea = shapeAlerts.reduce((s, a) => s + (Number(a._clippedAreaHa ?? a.areaHa) || 0), 0);
-        const byYS = {};
-        for (const a of shapeAlerts) {
-          const yr = a.detectedAt ? a.detectedAt.slice(0, 4) : '?';
-          byYS[yr] = (byYS[yr] || 0) + 1;
-        }
-        const yrLine = Object.entries(byYS).sort((x, y) => y[0].localeCompare(x[0])).map(([y, n]) => `${y.slice(2)}:${n}`).join(' ');
-        return `<div class="ap-shape-row">
-          <div class="ap-shape-name">${nome}${mun ? `<span class="ap-shape-mun"> · ${mun}</span>` : ''}</div>
-          <div class="ap-shape-stats">
-            <span class="ap-shape-pill">${shapeAlerts.length} alertas</span>
-            <span class="ap-shape-pill">${shapeArea.toFixed(1)} ha</span>
-          </div>
-          ${yrLine ? `<div class="ap-shape-years">${yrLine}</div>` : ''}
-        </div>`;
-      }).filter(Boolean).join('');
-
-      // ── Renderiza ─────────────────────────────────────────
-      body.innerHTML = `
-        <div class="ap-metrics">
-          <div class="ap-metric">
-            <div class="ap-metric-val">${alerts.length.toLocaleString('pt-BR')}</div>
-            <div class="ap-metric-lbl">alertas</div>
-          </div>
-          <div class="ap-metric">
-            <div class="ap-metric-val">${areaTotal.toFixed(1).replace('.', ',')}</div>
-            <div class="ap-metric-lbl">hectares</div>
-          </div>
-          <div class="ap-metric">
-            <div class="ap-metric-val">${mediaDiaria.toFixed(1).replace('.', ',')}</div>
-            <div class="ap-metric-lbl">ha/dia</div>
-          </div>
-        </div>
-
-        ${years.length > 0 ? `
-        <div class="ap-section">
-          <div class="ap-section-title">Evolução do total de alertas</div>
-          <div class="ap-year-chart">
-            <div class="ap-ygrid">${yGridLines}</div>
-            <div class="ap-ycols">${yearCols}</div>
-          </div>
-          ${(maiorDesmatShape || maiorVelShape) ? `
-          <div class="ap-highlights">
-            ${maiorDesmatShape ? `
-            <div class="ap-highlight">
-              <div class="ap-highlight-title">Maior Desmatamento</div>
-              <div class="ap-highlight-val">${maiorDesmatHa.toFixed(1).replace('.', ',')}<span> ha</span></div>
-              <div class="ap-highlight-sub">${maiorDesmatShape}</div>
-            </div>` : ''}
-            ${maiorVelShape ? `
-            <div class="ap-highlight">
-              <div class="ap-highlight-title">Maior Velocidade</div>
-              <div class="ap-highlight-val">${maiorVelHaDia.toFixed(1).replace('.', ',')}<span> ha/dia</span></div>
-              <div class="ap-highlight-sub">${maiorVelShape}</div>
-            </div>` : ''}
-          </div>` : ''}
-        </div>
-
-        <div class="ap-section">
-          <div class="ap-section-title">Evolução mensal da área de desmatamento</div>
-          <div class="ap-year-chart">
-            <div class="ap-ygrid">${yGridMonthly}</div>
-            <div class="ap-monthly-chart">${monthGroups}</div>
-          </div>
-          <div class="ap-legend">${legend}</div>
-        </div>
-        ` : ''}
-
-        ${shapeRows ? `
-        <div class="ap-section">
-          <div class="ap-section-title">Por shape selecionado</div>
-          <div class="ap-shape-list">${shapeRows}</div>
-        </div>` : ''}
-      `;
     }
 
     function updateAlertsDetailContent() {
@@ -2693,13 +2523,15 @@ export function bootstrapTaboa() {
     document.getElementById('chkIncraAssentamentos')?.addEventListener('change', function () {
       setRemoteLayerVisible('local:assentamentos', this.checked, this.checked ? { showAll: true } : undefined);
     });
-    document.getElementById('chkProdes')?.addEventListener('change', function () {
-      const on = this.checked;
-      setProdesVisible(map, on).catch((e) => {
-        this.checked = false;
+    const chkProdes = document.getElementById('chkProdes');
+    function syncProdesLayer() {
+      if (!chkProdes) return;
+      setProdesVisible(map, chkProdes.checked).catch((e) => {
+        chkProdes.checked = false;
         setStatus('Não foi possível carregar o PRODES: ' + (e.message || e), true);
       });
-    });
+    }
+    chkProdes?.addEventListener('change', syncProdesLayer);
     for (const cfg of SHAPE_OVERLAY_LAYERS) {
       const inp = document.getElementById(cfg.checkboxId);
       inp?.addEventListener('change', function () {
@@ -2731,6 +2563,8 @@ export function bootstrapTaboa() {
     document.getElementById('analyticsClose')?.addEventListener('click', function () {
       setAnalyticsOpen(false);
     });
+    updateAnalyticPanel();
+    loadProdesResumo();
 
     // ─── Registros ────────────────────────────────────────────────────────────
 
@@ -3325,6 +3159,7 @@ export function bootstrapTaboa() {
 
     (async function startup() {
       initMap();
+      if (chkProdes?.checked) syncProdesLayer();
       subscribeIncraAssentamentos(() => populateAssentamentoSelect());
       setIncraAssentamentosPrepareHook(async (meta) => {
         if (meta?.showAll || !getIncraAssentamentosFC()?.features?.length) {
