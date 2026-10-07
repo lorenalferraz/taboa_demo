@@ -217,19 +217,28 @@ function preparePayload(raw = {}) {
 function drawHeader(doc, generatedAt) {
   const logo = findLogo();
   const top = 24;
-  const rowH = 42;
+  const padX = 10;
+  const padY = 8;
   const cellW = CONTENT_W / 2;
   const logoH = 30;
-  const logoY = top + (rowH - logoH) / 2;
-  if (logo) {
-    try { doc.image(logo, MARGIN, logoY, { height: logoH }); } catch (_) {}
-  }
   const title = 'Relatório de análise de Imóveis Rurais';
+  const titleInner = cellW - padX * 2;
+  doc.font(doc._sansBold).fontSize(11);
+  const titleH = doc.heightOfString(title, { width: titleInner, align: 'right' });
+  const rowH = Math.max(logoH, titleH) + padY * 2;
+  doc.save();
+  doc.lineWidth(0.9).strokeColor('#b0b8c0');
+  doc.rect(MARGIN, top, CONTENT_W, rowH).stroke();
+  doc.moveTo(MARGIN + cellW, top).lineTo(MARGIN + cellW, top + rowH).stroke();
+  doc.restore();
+  if (logo) {
+    const logoY = top + (rowH - logoH) / 2;
+    try { doc.image(logo, MARGIN + padX, logoY, { height: logoH }); } catch (_) {}
+  }
+  const titleY = top + (rowH - titleH) / 2;
   doc.fillColor(NAVY).font(doc._sansBold).fontSize(11);
-  const titleH = doc.heightOfString(title, { width: cellW, align: 'right' });
-  const titleY = top + Math.max(4, (rowH - titleH) / 2);
-  doc.text(title, MARGIN + cellW, titleY, {
-    width: cellW,
+  doc.text(title, MARGIN + cellW + padX, titleY, {
+    width: titleInner,
     align: 'right',
     lineGap: 0,
   });

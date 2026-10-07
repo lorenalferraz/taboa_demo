@@ -370,6 +370,23 @@ Como conferir
   fica no centro, embaixo da nota.
 
 
+14. Cabeçalho do relatório em duas colunas — 07/10/2026
+-------------------------------------------------------
+
+O que passou a valer
+  O cabeçalho do relatório é uma tabela de duas colunas, com borda.
+  A coluna da esquerda traz a logo, alinhada à esquerda. A da direita
+  traz "Relatório de análise de Imóveis Rurais", alinhado à direita
+  da célula.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No topo do PDF, a logo e o título ficam em células separadas, com
+  a divisão no meio e a borda em volta.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
