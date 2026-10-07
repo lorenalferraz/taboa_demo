@@ -741,6 +741,27 @@ Como conferir
   de ser usadas e podem ser apagadas.
 
 
+28. Varredura final: credenciais do MapBiomas fora do .env.example — 07/10/2026
+-------------------------------------------------------------------------------
+
+O que passou a valer
+  - O .env.example não traz mais MAPBIOMAS_EMAIL, MAPBIOMAS_PASSWORD
+    nem o comentário sobre a credencial criptografada.
+  - Fora deste registro, nenhum arquivo do projeto cita o MapBiomas.
+    Não há .env real no diretório.
+
+Por quê
+  O sistema não usa mais o MapBiomas, e o modelo de configuração não
+  deve sugerir credenciais que não existem.
+
+Arquivos
+  - .env.example
+
+Como conferir
+  Procurar "mapbiomas" no projeto (fora de node_modules e .git): só
+  este arquivo de alterações aparece, nas seções históricas.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
