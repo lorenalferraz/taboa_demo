@@ -1,29 +1,25 @@
 /**
  * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
- * Não é o mapa de cobertura (floresta / não floresta). Cada vez que o mapa
- * para, o navegador pede a imagem ao vivo no WMS. Nada fica gravado no
- * sistema. O desenho só aparece dentro dos municípios da faixa.
+ * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Nada fica gravado
+ * no sistema. Cada pedido cobre a tela atual, dentro da área dos municípios.
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
 import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
-import { applyLayerOrder, paneName } from './layerOrder.js';
+import { applyLayerOrder, paneName, rendererFor } from './layerOrder.js';
 
-const WMS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/ows';
-const WMS_LAYER = 'prodes-mata-atlantica-nb:yearly_deforestation';
-const WMS_STYLE = 'prodes-mata-atlantica-nb:yearly_deforestation_pt-br';
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
+const WFS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
+const TYPE_NAME = 'prodes-mata-atlantica-nb:yearly_deforestation';
+const MAX_FEATURES = 2500;
 
-let overlay = null;
-let svgImage = null;
-let clipPathEl = null;
+let group = null;
 let coverage = null;
 let loading = null;
 let moveHandler = null;
 let reqSeq = 0;
 let loadedKey = '';
+let attributionOn = false;
 
 function unionFeatures(features) {
   const list = features.filter((f) => f?.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
@@ -36,7 +32,7 @@ function unionFeatures(features) {
     } catch (_) {}
   }
   if (!acc?.geometry) return null;
-  return turf.simplify(acc, { tolerance: 0.003, highQuality: false });
+  return turf.simplify(acc, { tolerance: 0.001, highQuality: false });
 }
 
 async function municipioFeatures() {
@@ -78,65 +74,8 @@ async function ensureCoverage() {
   }
 }
 
-function clipD(geom, bounds) {
-  const west = bounds.getWest();
-  const south = bounds.getSouth();
-  const east = bounds.getEast();
-  const north = bounds.getNorth();
-  const dx = east - west || 1;
-  const dy = north - south || 1;
-  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-  const parts = [];
-  for (const poly of polys) {
-    for (const ring of poly) {
-      if (!ring?.length) continue;
-      const cmds = ring.map(([lng, lat], i) => {
-        const x = (lng - west) / dx;
-        const y = (north - lat) / dy;
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
-      });
-      cmds.push('Z');
-      parts.push(cmds.join(' '));
-    }
-  }
-  return parts.join(' ');
-}
-
-function ensureOverlay(map) {
-  if (overlay) return overlay;
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('xmlns', SVG_NS);
-  svg.setAttribute('viewBox', '0 0 1 1');
-  svg.setAttribute('preserveAspectRatio', 'none');
-  const defs = document.createElementNS(SVG_NS, 'defs');
-  const clip = document.createElementNS(SVG_NS, 'clipPath');
-  clip.setAttribute('id', 'taboa-prodes-clip');
-  clip.setAttribute('clipPathUnits', 'objectBoundingBox');
-  clipPathEl = document.createElementNS(SVG_NS, 'path');
-  clipPathEl.setAttribute('clip-rule', 'evenodd');
-  clip.appendChild(clipPathEl);
-  defs.appendChild(clip);
-  svgImage = document.createElementNS(SVG_NS, 'image');
-  svgImage.setAttribute('x', '0');
-  svgImage.setAttribute('y', '0');
-  svgImage.setAttribute('width', '1');
-  svgImage.setAttribute('height', '1');
-  svgImage.setAttribute('preserveAspectRatio', 'none');
-  svgImage.setAttribute('clip-path', 'url(#taboa-prodes-clip)');
-  svg.appendChild(defs);
-  svg.appendChild(svgImage);
-  if (!map.getPane(paneName('prodes'))) map.createPane(paneName('prodes'));
-  overlay = L.svgOverlay(svg, coverage.bounds, {
-    pane: paneName('prodes'),
-    opacity: 0,
-    interactive: false,
-    attribution: 'PRODES &copy; INPE / TerraBrasilis',
-  });
-  return overlay;
-}
-
 function viewSlice(map) {
-  const view = map.getBounds().pad(0.35);
+  const view = map.getBounds().pad(0.15);
   const lim = coverage.bounds;
   const south = Math.max(view.getSouth(), lim.getSouth());
   const north = Math.min(view.getNorth(), lim.getNorth());
@@ -146,64 +85,149 @@ function viewSlice(map) {
   return L.latLngBounds([south, west], [north, east]);
 }
 
-function pixelSize(map, bounds) {
-  const nw = map.latLngToContainerPoint(bounds.getNorthWest());
-  const se = map.latLngToContainerPoint(bounds.getSouthEast());
-  let width = Math.abs(se.x - nw.x);
-  let height = Math.abs(se.y - nw.y);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  width *= dpr;
-  height *= dpr;
-  const scale = Math.min(1, 1024 / Math.max(width, height, 1));
-  return {
-    width: Math.max(64, Math.round(width * scale)),
-    height: Math.max(64, Math.round(height * scale)),
-  };
-}
-
-function wmsUrl(bounds, width, height) {
+function featureUrl(bounds, count) {
   const params = new URLSearchParams({
-    service: 'WMS',
-    version: '1.1.1',
-    request: 'GetMap',
-    layers: WMS_LAYER,
-    styles: WMS_STYLE,
-    format: 'image/png',
-    transparent: 'true',
-    srs: 'EPSG:4326',
-    width: String(width),
-    height: String(height),
-    bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`,
+    service: 'WFS',
+    version: '2.0.0',
+    request: 'GetFeature',
+    typeName: TYPE_NAME,
+    outputFormat: 'application/json',
+    srsName: 'EPSG:4674',
+    bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},EPSG:4674`,
   });
-  return `${WMS_URL}?${params}`;
+  if (count) params.set('count', String(count));
+  return `${WFS_URL}?${params}`;
 }
 
-function loadImage(url, seq) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => finish(new Error('O INPE demorou para responder o PRODES.')), 28000);
-    const finish = (err) => {
-      clearTimeout(timer);
-      svgImage.removeEventListener('load', onOk);
-      svgImage.removeEventListener('error', onErr);
-      if (seq !== reqSeq) resolve(false);
-      else if (err) reject(err);
-      else resolve(true);
-    };
-    const onOk = () => finish(null);
-    const onErr = () => finish(new Error('Falha ao baixar o PRODES.'));
-    svgImage.addEventListener('load', onOk);
-    svgImage.addEventListener('error', onErr);
-    svgImage.setAttribute('href', url);
-    svgImage.setAttributeNS(XLINK_NS, 'href', url);
-  });
+async function fetchGeoJson(url, seq) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 40000);
+  try {
+    const resp = await fetch(url, { signal: ctrl.signal });
+    if (!resp.ok) throw new Error('Falha ao baixar o PRODES.');
+    const data = await resp.json();
+    if (seq !== reqSeq) return null;
+    if (data?.exceptions || data?.type === 'ExceptionReport') {
+      throw new Error('Falha ao baixar o PRODES.');
+    }
+    return data;
+  } catch (err) {
+    if (seq !== reqSeq) return null;
+    if (err?.name === 'AbortError') throw new Error('O INPE demorou para responder o PRODES.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function yearColor(year) {
+  const y = Number(year);
+  if (!Number.isFinite(y)) return '#f59e0b';
+  const t = Math.min(1, Math.max(0, (y - 2004) / 21));
+  const r = Math.round(253 - t * 55);
+  const g = Math.round(214 - t * 130);
+  const b = Math.round(48 - t * 20);
+  return `rgb(${r},${g},${b})`;
+}
+
+function esc(value) {
+  return String(value ?? '—')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function areaHa(props) {
+  const km = Number(props?.area_km);
+  if (!Number.isFinite(km)) return '—';
+  return `${(km * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ha`;
+}
+
+function popupHtml(props) {
+  const year = props?.year ?? '—';
+  const rows = [
+    ['Ano', year],
+    ['Área', areaHa(props)],
+    ['Classe', props?.main_class || 'Desmatamento'],
+    ['Imagem', props?.image_date || '—'],
+    ['Estado', props?.state || '—'],
+    ['Satélite', [props?.satellite, props?.sensor].filter(Boolean).join(' ') || '—'],
+    ['Fonte', 'PRODES / INPE'],
+  ];
+  const body = rows
+    .map(([label, value]) => `<div class="popup-row">${esc(label)}: ${esc(value)}</div>`)
+    .join('');
+  return `<div class="popup-title">Desmatamento ${esc(year)}</div>${body}`;
+}
+
+function enableClick(lyr) {
+  if (lyr._path) lyr._path.style.pointerEvents = 'auto';
+  if (typeof lyr.eachLayer === 'function') {
+    lyr.eachLayer((child) => enableClick(child));
+  }
+}
+
+function showNote(text) {
+  const el = document.getElementById('status');
+  if (!el) return;
+  el.hidden = false;
+  el.className = 'status-pill';
+  el.textContent = text;
+}
+
+function hideNote() {
+  const el = document.getElementById('status');
+  if (!el) return;
+  if (String(el.textContent || '').startsWith('Aproxime o mapa')) el.hidden = true;
+}
+
+function insideFaixa(feat) {
+  if (!feat?.geometry) return false;
+  try {
+    return turf.booleanIntersects(feat, coverage.feature);
+  } catch (_) {
+    return false;
+  }
+}
+
+function ensureGroup(map) {
+  if (!group) {
+    if (!map.getPane(paneName('prodes'))) map.createPane(paneName('prodes'));
+    group = L.geoJSON({ type: 'FeatureCollection', features: [] }, {
+      pane: paneName('prodes'),
+      renderer: rendererFor(map, 'prodes'),
+      interactive: true,
+      style(feat) {
+        const color = yearColor(feat?.properties?.year);
+        return { color, weight: 1.15, opacity: 0.95, fillColor: color, fillOpacity: 0.55 };
+      },
+      onEachFeature(feat, lyr) {
+        lyr.bindPopup(popupHtml(feat?.properties || {}), { maxWidth: 360, autoPan: false });
+        lyr.on('add', () => enableClick(lyr));
+      },
+    });
+  }
+  if (!attributionOn && map.attributionControl) {
+    map.attributionControl.addAttribution('PRODES &copy; INPE / TerraBrasilis');
+    attributionOn = true;
+  }
+  return group;
+}
+
+function drawFeatures(features) {
+  group.clearLayers();
+  if (features.length) group.addData({ type: 'FeatureCollection', features });
+  group.eachLayer((lyr) => enableClick(lyr));
 }
 
 async function refresh(map) {
   const seq = ++reqSeq;
   const bounds = viewSlice(map);
   if (!bounds) {
-    overlay.setOpacity(0);
-    return false;
+    if (group) group.clearLayers();
+    hideNote();
+    return true;
   }
   const key = [
     map.getZoom(),
@@ -213,27 +237,38 @@ async function refresh(map) {
     bounds.getNorth().toFixed(3),
   ].join(',');
   if (key === loadedKey) return true;
-  const { width, height } = pixelSize(map, bounds);
-  overlay.setBounds(bounds);
-  clipPathEl.setAttribute('d', clipD(coverage.feature.geometry, bounds));
-  const ok = await loadImage(wmsUrl(bounds, width, height), seq);
-  if (!ok || seq !== reqSeq) return false;
+
+  const probe = await fetchGeoJson(featureUrl(bounds, 1), seq);
+  if (!probe || seq !== reqSeq) return false;
+  const matched = Number(probe.numberMatched ?? probe.totalFeatures ?? probe.features?.length ?? 0);
+  if (matched > MAX_FEATURES) {
+    group.clearLayers();
+    loadedKey = key;
+    showNote(`Aproxime o mapa para ver os polígonos do PRODES (${matched.toLocaleString('pt-BR')} nesta área).`);
+    return true;
+  }
+
+  const data = matched <= 1 ? probe : await fetchGeoJson(featureUrl(bounds), seq);
+  if (!data || seq !== reqSeq) return false;
+  const features = (data.features || []).filter(insideFaixa);
+  drawFeatures(features);
   loadedKey = key;
-  overlay.setOpacity(1);
+  hideNote();
   return true;
 }
 
 function detach(map) {
   reqSeq += 1;
   loadedKey = '';
+  hideNote();
   if (moveHandler) {
     map.off('moveend', moveHandler);
     moveHandler = null;
   }
-  if (overlay && map.hasLayer(overlay)) {
-    try { map.removeLayer(overlay); } catch (_) {}
+  if (group && map.hasLayer(group)) {
+    try { map.removeLayer(group); } catch (_) {}
   }
-  if (overlay) overlay.setOpacity(0);
+  if (group) group.clearLayers();
 }
 
 export async function setProdesVisible(map, visible) {
@@ -243,9 +278,9 @@ export async function setProdesVisible(map, visible) {
     return;
   }
   await ensureCoverage();
-  ensureOverlay(map);
+  ensureGroup(map);
   applyLayerOrder(map);
-  if (!map.hasLayer(overlay)) overlay.addTo(map);
+  if (!map.hasLayer(group)) group.addTo(map);
   if (!moveHandler) {
     moveHandler = () => {
       refresh(map).catch(() => {});

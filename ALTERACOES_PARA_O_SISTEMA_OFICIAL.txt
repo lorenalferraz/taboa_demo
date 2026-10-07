@@ -510,6 +510,36 @@ Como conferir
   floresta que restou ficam no satélite.
 
 
+21. PRODES em polígonos clicáveis (WFS GeoJSON) — 07/10/2026
+-------------------------------------------------------------
+
+O que passou a valer
+  A camada PRODES deixa de ser uma imagem e passa a ser polígono,
+  no mesmo tipo de camada do MapBiomas. O clique abre o ano, a área,
+  a classe, a data da imagem, o estado e o satélite.
+  A requisição é ao vivo no WFS do TerraBrasilis, em GeoJSON
+  (EPSG:4674):
+  https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs
+  service=WFS, version=2.0.0, request=GetFeature,
+  typeName=prodes-mata-atlantica-nb:yearly_deforestation,
+  outputFormat=application/json, srsName=EPSG:4674.
+  O pedido leva o retângulo da tela, limitado à área dos municípios.
+  Se essa área tiver polígonos demais, o mapa pede para aproximar
+  antes de desenhar. Nada é gravado no sistema.
+
+Por quê
+  A imagem do WMS não recebe clique. O dado de desmatamento do INPE
+  também sai como polígono nesse WFS.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+
+Como conferir
+  Em Camadas, ligar PRODES e aproximar o mapa num município da faixa.
+  As manchas de desmate são polígonos. Clicar numa delas abre o
+  popup com o ano e a área.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
