@@ -28,6 +28,7 @@ const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const PAGE_LIMIT = PAGE_H - 78;
+const W_NOME_PROPRIEDADE = 132;
 
 const FONT_REGULAR_CANDIDATES = [
   '/Library/Fonts/SF-Pro-Text-Regular.otf',
@@ -477,8 +478,8 @@ function drawRestricaoImovelTable(doc, y, title, itens) {
   const rows = Array.isArray(itens) ? itens : [];
   if (!rows.length) return y;
   return drawLabeledTable(doc, y, title, [
-    { label: 'Propriedade' },
-    { label: 'Tipo', w: 108 },
+    { label: 'Propriedade', w: W_NOME_PROPRIEDADE },
+    { label: 'Tipo' },
     { label: 'Sobreposição', w: 78 },
     { label: '% de Sobreposição', w: 78 },
   ], rows.map((row) => [
@@ -584,7 +585,7 @@ function drawPropriedadesTable(doc, y, imoveis) {
   const title = list.length === 1 ? 'Propriedade' : 'Propriedades';
   const temPct = list.some((im) => Number.isFinite(Number(im.pct)));
   const cols = [
-    { label: 'Propriedade', w: 132 },
+    { label: 'Propriedade', w: W_NOME_PROPRIEDADE },
     { label: 'CAR/CEFIR' },
   ];
   if (temPct) cols.push({ label: 'Sobreposição', w: 72 });

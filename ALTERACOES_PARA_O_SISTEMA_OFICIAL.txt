@@ -281,6 +281,26 @@ Como conferir
   A área aparece só em "Área de análise".
 
 
+11. Largura do nome nas tabelas de reserva legal e APP — 07/10/2026
+-------------------------------------------------------------------
+
+Problema
+  Na reserva legal e na APP, a coluna do nome da propriedade era larga e
+  a de tipo ficava estreita, apesar de o tipo ter mais texto.
+
+O que passou a valer
+  A coluna Propriedade dessas tabelas tem a mesma largura da coluna
+  Propriedade do cadastro. A coluna Tipo fica com o espaço restante,
+  como o CAR/CEFIR na tabela de cima.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No laudo, o nome da propriedade em reserva legal e APP alinha com o
+  nome da tabela Propriedades. O tipo ocupa a coluna larga.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
