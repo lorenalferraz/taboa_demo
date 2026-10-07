@@ -676,11 +676,13 @@ function dadosImovelRural(feat) {
   const car = String(p.NUMERO_CAR || '').trim();
   const ide = p.IDE_IMOVEL != null ? String(p.IDE_IMOVEL).trim() : '';
   const municipio = String(p.MUNICIPIO || p.municipio || p.NM_MUN || '').trim();
+  const areaHa = Number(String(p.AREA_REGIS ?? '').replace(',', '.'));
   return {
     nome: nome || (ide ? `Imóvel ${ide}` : 'Imóvel rural'),
     car,
     ide,
     municipio,
+    areaHa: Number.isFinite(areaHa) && areaHa > 0 ? areaHa : null,
   };
 }
 

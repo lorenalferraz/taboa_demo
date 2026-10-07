@@ -421,7 +421,7 @@ export default function App() {
                       </label>
                     </li>
                   </ul>
-                  <p className="layers-wms-hint">A camada no topo da lista fica por cima das outras e é a que abre o popup.</p>
+                  <p className="layers-wms-hint">Arraste as três linhas para mudar qual camada fica por cima. A do topo da lista abre o popup.</p>
                 </div>
 
               </div>

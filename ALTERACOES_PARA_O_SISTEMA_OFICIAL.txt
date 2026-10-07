@@ -133,6 +133,35 @@ Como conferir
   sobreposição e qual popup responde.
 
 
+5. Ordem por arraste e tamanho da propriedade no laudo — 07/10/2026
+-------------------------------------------------------------------
+
+Problema
+  As setas de ordem ao lado de cada camada ficaram carregadas. No laudo,
+  a caixa "Buffer aplicado" mostrava 500 m e ocupava o mesmo tamanho das
+  informações cadastrais.
+
+O que passou a valer
+  - Cada camada tem três linhas horizontais à esquerda. A pessoa arrasta
+    essa alça para mudar a sobreposição. A camada no topo da lista fica
+    por cima e abre o popup.
+  - No laudo, "Buffer aplicado" virou "Tamanho da propriedade", com a área
+    registrada do imóvel em hectares. A caixa é menor e usa o mesmo cinza,
+    borda e tipografia das unidades de conservação.
+
+Arquivos
+  - frontend/src/taboa/lib/layerOrder.js
+  - frontend/src/styles/app.css
+  - frontend/src/App.jsx
+  - backend/relatorio/consultaPdf.js
+  - backend/relatorio/cruzamentos.js
+
+Como conferir
+  Na aba Camadas, arrastar as três linhas de uma camada e ver a ordem
+  mudar. No PDF de um ponto sobre imóvel, a caixa "Tamanho da propriedade"
+  mostra os hectares do cadastro, menor que as demais.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

@@ -69,11 +69,6 @@ function applyOrderFromDom(map) {
   const ids = [...listEl.querySelectorAll(':scope > [data-layer-id]')].map((el) => el.dataset.layerId);
   ids.forEach((id, i) => {
     ensurePane(map, id, 500 - i);
-    const li = listEl.querySelector(`[data-layer-id="${id}"]`);
-    const up = li?.querySelector('[data-order="up"]');
-    const down = li?.querySelector('[data-order="down"]');
-    if (up) up.disabled = i === 0;
-    if (down) down.disabled = i === ids.length - 1;
   });
 }
 
@@ -98,41 +93,41 @@ export function bindLayerList(ul) {
     const id = CHECKBOX_TO_LAYER[input?.id];
     if (!id) return;
     li.dataset.layerId = id;
-    if (li.querySelector('.layer-order')) return;
-    const box = document.createElement('span');
-    box.className = 'layer-order';
-    box.innerHTML = `
-      <button type="button" class="layer-order-btn" data-order="up" aria-label="Trazer esta camada para cima">↑</button>
-      <button type="button" class="layer-order-btn" data-order="down" aria-label="Enviar esta camada para baixo">↓</button>`;
-    li.appendChild(box);
+    if (li.querySelector('.layer-drag')) return;
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'layer-drag';
+    handle.draggable = true;
+    handle.setAttribute('aria-label', 'Arrastar para mudar a ordem da camada');
+    handle.innerHTML = '<span></span><span></span><span></span>';
+    li.insertBefore(handle, li.firstChild);
+    handle.addEventListener('dragstart', (ev) => {
+      li.classList.add('is-dragging');
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', id);
+    });
+    handle.addEventListener('dragend', () => {
+      li.classList.remove('is-dragging');
+      applyOrderFromDom(window.__taboaLeafletMap || null);
+    });
   });
   reorderListToDefault();
   applyOrderFromDom(window.__taboaLeafletMap || null);
-  ul.addEventListener('click', (ev) => {
-    const btn = ev.target.closest?.('[data-order]');
-    if (!btn || !ul.contains(btn)) return;
+  ul.addEventListener('dragover', (ev) => {
+    const dragging = ul.querySelector('.is-dragging');
+    const over = ev.target.closest?.('[data-layer-id]');
+    if (!dragging || !over || over === dragging) return;
     ev.preventDefault();
-    ev.stopPropagation();
-    const li = btn.closest('[data-layer-id]');
-    if (!li) return;
-    moveListedLayer(li.dataset.layerId, btn.dataset.order === 'up' ? 1 : -1);
+    const rect = over.getBoundingClientRect();
+    if (ev.clientY > rect.top + rect.height / 2) over.after(dragging);
+    else over.before(dragging);
+  });
+  ul.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    applyOrderFromDom(window.__taboaLeafletMap || null);
   });
 }
 
 export function applyLayerOrder(map) {
-  applyOrderFromDom(map);
-}
-
-function moveListedLayer(id, dir) {
-  if (!listEl) return;
-  const items = [...listEl.querySelectorAll(':scope > [data-layer-id]')];
-  const i = items.findIndex((el) => el.dataset.layerId === id);
-  const j = i - dir;
-  if (i < 0 || j < 0 || j >= items.length) return;
-  const node = items[i];
-  const other = items[j];
-  if (j < i) listEl.insertBefore(node, other);
-  else listEl.insertBefore(node, other.nextSibling);
-  const map = window.__taboaLeafletMap || null;
   applyOrderFromDom(map);
 }
