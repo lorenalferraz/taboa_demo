@@ -227,11 +227,6 @@ function drawHeader(doc, generatedAt) {
   doc.font(doc._sansBold).fontSize(titleSize);
   const wrapped = doc.heightOfString(title, { width: titleInner, align: 'right', lineGap: 0 });
   const rowH = Math.max(logoH, wrapped) + padY * 2;
-  doc.save();
-  doc.lineWidth(0.9).strokeColor('#b0b8c0');
-  doc.rect(MARGIN, top, CONTENT_W, rowH).stroke();
-  doc.moveTo(MARGIN + cellW, top).lineTo(MARGIN + cellW, top + rowH).stroke();
-  doc.restore();
   if (logo) {
     const logoY = top + (rowH - logoH) / 2;
     try { doc.image(logo, MARGIN + padX, logoY, { height: logoH }); } catch (_) {}

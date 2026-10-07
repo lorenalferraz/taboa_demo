@@ -421,6 +421,21 @@ Como conferir
   volta para a faixa inteira.
 
 
+17. Cabeçalho do relatório sem borda — 07/10/2026
+-------------------------------------------------
+
+O que passou a valer
+  A tabela do cabeçalho não tem mais borda nem a linha que dividia as
+  duas colunas. A logo continua à esquerda e o título à direita, no
+  centro vertical da célula.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No topo do PDF, a logo e o título aparecem sem a caixa em volta.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
