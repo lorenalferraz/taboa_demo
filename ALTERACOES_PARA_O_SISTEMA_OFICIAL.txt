@@ -484,6 +484,32 @@ Como conferir
   só sobre os municípios. Mover o mapa pede a imagem de novo.
 
 
+20. PRODES passa a ser desmatamento, não cobertura — 07/10/2026
+---------------------------------------------------------------
+
+O que passou a valer
+  A camada PRODES deixa de desenhar o mapa de cobertura (floresta e
+  não floresta) e passa a desenhar o desmatamento anual do PRODES no
+  bioma Mata Atlântica, do INPE. Cada cor é o incremento de um ano,
+  de 2004 a 2025. Onde não houve desmate, o satélite continua visível.
+  O recorte segue só nos municípios da faixa. A imagem continua ao
+  vivo: nada é gravado no sistema.
+  Na lista, a linha diz PRODES e a fonte “Desmatamento · INPE”.
+
+Por quê
+  A base anterior (prodes_brasil) classifica a cobertura vegetal. O
+  uso aqui é acompanhar desmatamento.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+  - frontend/src/App.jsx
+
+Como conferir
+  Em Camadas, ligar PRODES. No mapa aparecem manchas do desmate, não
+  um preenchimento verde e amarelo em todo o município. O mar e a
+  floresta que restou ficam no satélite.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

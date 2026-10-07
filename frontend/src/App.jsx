@@ -428,14 +428,14 @@ export default function App() {
                       <label className="layer-row">
                         <span
                           className="toggle-switch"
-                          style={{ '--layer-color': '#65a30d', '--layer-color-soft': '#bef264' }}
+                          style={{ '--layer-color': '#d97706', '--layer-color-soft': '#fcd34d' }}
                         >
-                          <input type="checkbox" id="chkProdes" aria-label="PRODES. Fonte: INPE" />
+                          <input type="checkbox" id="chkProdes" aria-label="PRODES desmatamento. Fonte: INPE" />
                           <span className="toggle-switch-slider" aria-hidden="true" />
                         </span>
                         <span className="layer-row-text">
                           <span className="layer-row-title">PRODES</span>
-                          <span className="layer-row-source">Fonte: INPE</span>
+                          <span className="layer-row-source">Desmatamento · INPE</span>
                         </span>
                       </label>
                     </li>

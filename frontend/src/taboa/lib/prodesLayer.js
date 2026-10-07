@@ -1,9 +1,8 @@
 /**
- * PRODES Brasil (INPE / TerraBrasilis).
- * Cada vez que o mapa para, o navegador pede a imagem ao vivo no WMS.
- * Nada do PRODES fica gravado no sistema. O desenho só aparece dentro
- * dos municípios da faixa: a imagem do INPE entra num SVG e o recorte
- * é o contorno desses municípios.
+ * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
+ * Não é o mapa de cobertura (floresta / não floresta). Cada vez que o mapa
+ * para, o navegador pede a imagem ao vivo no WMS. Nada fica gravado no
+ * sistema. O desenho só aparece dentro dos municípios da faixa.
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
@@ -12,8 +11,8 @@ import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
 import { applyLayerOrder, paneName } from './layerOrder.js';
 
 const WMS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/ows';
-const WMS_LAYER = 'prodes-brasil-nb:prodes_brasil';
-const WMS_STYLE = 'prodes-brasil-nb:prodes_brasil_pt-br';
+const WMS_LAYER = 'prodes-mata-atlantica-nb:yearly_deforestation';
+const WMS_STYLE = 'prodes-mata-atlantica-nb:yearly_deforestation_pt-br';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
