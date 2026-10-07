@@ -1,9 +1,7 @@
 /**
- * Relatório da Consulta × alertas MapBiomas.
+ * Relatório da Consulta × PRODES.
  * O resumo completo vai só no PDF (backend/relatorio). Aqui: botão de download + payload.
  */
-import { formatHaPtBr } from './formatPtBr.js';
-import { biomaFromAlert, alertSinaisDetail, alertSourceLabel, fonteAlertaLabel, vetorPressaoLabel } from './mapbiomasAlertMeta.js';
 
 export function sourceLabelPt(source) {
   const map = {
@@ -20,21 +18,11 @@ export function kindLabelPt(kind) {
   return kind === 'polygon' ? 'Polígono' : 'Ponto';
 }
 
-export function formatPctPtBr(value, decimals = 1) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '—';
-  return `${n.toFixed(decimals).replace('.', ',')}%`;
-}
-
 /**
  * Caixa da consulta após o cruzamento: só a ação de baixar o PDF.
  */
-export function buildConsultaReportHtml(opts = {}) {
-  const miss = opts.noAlertsLoaded
-    ? '<p class="consulta-result-msg">Não há alertas carregados. Aguarde a varredura e consulte novamente.</p>'
-    : '';
+export function buildConsultaReportHtml() {
   return `
-    ${miss}
     <div class="consulta-report-actions">
       <button type="button" class="btn btn-ghost btn-sm consulta-pdf-btn" id="btnConsultaPdf">
         <span>Baixar relatório</span>
@@ -48,13 +36,6 @@ export function buildConsultaReportHtml(opts = {}) {
   `;
 }
 
-function pctOrNull(num, den) {
-  const a = Number(num);
-  const b = Number(den);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
-  return Math.min(100, Math.max(0, (a / b) * 100));
-}
-
 /** Payload para o PDF em backend/relatorio (geometrias compactas para o mapa). */
 export function buildConsultaPdfPayload(opts) {
   const {
@@ -63,15 +44,10 @@ export function buildConsultaPdfPayload(opts) {
     mode,
     areaHa,
     municipio,
-    alerts = [],
-    totalClipHa,
-    overlapHa,
-    overlapPct,
     lat,
     lng,
     generatedAt,
     aoi,
-    clips = [],
     point,
     nome,
     cpf,
@@ -92,13 +68,7 @@ export function buildConsultaPdfPayload(opts) {
     lat,
     lng,
     generatedAt,
-    totalClipHa,
-    overlapHa,
-    overlapPct,
-    overlapPctLabel: formatPctPtBr(overlapPct),
-    fonteAlertas: alertSourceLabel(),
     aoi: aoi || null,
-    clips: Array.isArray(clips) ? clips : [],
     point: Array.isArray(point) && point.length >= 2 ? [Number(point[0]), Number(point[1])] : null,
     nome: String(nome || '').trim(),
     cpf: String(cpf || '').trim(),
@@ -106,30 +76,5 @@ export function buildConsultaPdfPayload(opts) {
     propriedadeHa: Number.isFinite(Number(opts.propriedadeHa)) && Number(opts.propriedadeHa) > 0
       ? Number(opts.propriedadeHa)
       : null,
-    alerts: alerts.map((a) => {
-      const clip = a._clippedAreaHa;
-      const pctArea = pctOrNull(clip, areaHa);
-      const pctAlerta = pctOrNull(clip, a.areaHa);
-      const parts = [];
-      if (pctArea != null) parts.push(`${formatPctPtBr(pctArea)} da área`);
-      if (pctAlerta != null) parts.push(`${formatPctPtBr(pctAlerta)} do alerta`);
-      return {
-        codigo: a.alertCode,
-        detectado: a.detectedAt || '—',
-        publicado: a.publishedAt || '—',
-        areaOriginal: formatHaPtBr(a.areaHa, 2),
-        areaRecorte: formatHaPtBr(clip, 2),
-        overlapPctArea: pctArea,
-        overlapPctAlerta: pctAlerta,
-        sobreposicao: parts.length ? parts.join(' · ') : '—',
-        bioma: biomaFromAlert(a),
-        fonte: fonteAlertaLabel(a),
-        vetorPressao: vetorPressaoLabel(a),
-        municipio: municipio
-          ? `${municipio.municipio || municipio.nome || '—'}/${municipio.uf || 'BA'}`
-          : '—',
-        sinal: alertSinaisDetail(a) || '—',
-      };
-    }),
   };
 }

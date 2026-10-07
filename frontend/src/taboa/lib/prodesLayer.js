@@ -2,11 +2,11 @@
  * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
  * A tela pede a imagem ao vivo no WMS, só de 2020 em diante, recortada no
  * contorno dos municípios. O clique consulta o polígono naquele ponto.
- * A cor é a mesma dos alertas do MapBiomas.
+ * Contorno vermelho, no mesmo tom do seletor da camada.
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { ALERT_STYLE } from './constants.js';
+import { PRODES_STYLE } from './constants.js';
 import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
 import { applyLayerOrder, paneName } from './layerOrder.js';
@@ -93,10 +93,10 @@ function viewSlice(map) {
 }
 
 function sldBody() {
-  const fill = ALERT_STYLE.fillColor || '#ef4444';
-  const opacity = ALERT_STYLE.fillOpacity ?? 0.12;
-  const stroke = ALERT_STYLE.color || '#ef4444';
-  const weight = ALERT_STYLE.weight ?? 2;
+  const fill = PRODES_STYLE.fillColor || '#ef4444';
+  const opacity = PRODES_STYLE.fillOpacity ?? 0.12;
+  const stroke = PRODES_STYLE.color || '#ef4444';
+  const weight = PRODES_STYLE.weight ?? 2;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">
   <NamedLayer>

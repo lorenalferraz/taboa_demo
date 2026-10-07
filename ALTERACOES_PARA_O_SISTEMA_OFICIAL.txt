@@ -684,6 +684,63 @@ Como conferir
   a borda dela não aparece na imagem.
 
 
+27. MapBiomas retirado; tudo passa a ser PRODES — 07/10/2026
+------------------------------------------------------------
+
+O que passou a valer
+  - Os alertas do MapBiomas saem do sistema inteiro: camada do mapa,
+    varredura na abertura, credenciais, painéis, consulta e relatório.
+  - Na aba Camadas, a linha "Alertas" (MapBiomas) deixa de existir. O
+    PRODES ocupa o lugar dela, logo abaixo de Municípios, com o título
+    "Alertas - PRODES" e o seletor vermelho que era do MapBiomas
+    (#ef4444 / #fecaca).
+  - A Consulta de Imóvel Rural cruza a área com o PRODES no servidor
+    (nova rota POST /api/prodes/cruzar, corpo { aoi }). O mapa da tela
+    desenha em vermelho os desmatamentos PRODES que tocam a área, e o
+    aviso diz quantos foram encontrados.
+  - No PDF, "RESULTADO ANALÍTICO DA CONSULTA" passa a ser o cruzamento
+    com o PRODES (sobreposição, polígonos na área, área e percentual
+    sobrepostos, tabela por ano e data da imagem). Os laudos de alerta,
+    as notas de fonte no rodapé e o "Alerta MapBiomas" do mapa saem. Na
+    legenda do mapa o PRODES aparece como "Alertas - PRODES".
+  - A rota POST /api/scan-alerts foi retirada (responde 404). O shape
+    dos municípios (GET /api/faixa/geojson) passa a ser lido por
+    backend/faixaShape.js, sem depender do módulo de varredura.
+  - Orientações para consulta, passos 5 e 6, falam do PRODES.
+  - API em rev mapa-v36.
+
+Por quê
+  O sistema passa a usar só o PRODES como fonte de desmatamento.
+
+Arquivos
+  - Removidos: backend/scanMapbiomas.js, backend/scanPipeline.js,
+    backend/mapbiomasAuth.js, backend/scanCacheFile.js,
+    backend/municipiosGeomFilter.js, backend/scan-seed/,
+    frontend/src/taboa/lib/alertsIntersect.js, mapbiomasClient.js,
+    mapbiomasAlertMeta.js, scanStream.js, consultaAoiFilter.js,
+    alertLinkedImoveis.js, credentials.js, wktParse.js,
+    frontend/src/taboa/workers/intersect.worker.js
+  - Novo: backend/faixaShape.js
+  - Alterados: backend/server.js, backend/relatorio/consultaPdf.js,
+    backend/relatorio/mapaSatelite.js, frontend/src/App.jsx,
+    frontend/src/taboa/bootstrap.js, frontend/src/taboa/lib/consultaTab.js,
+    frontend/src/taboa/lib/consultaReport.js,
+    frontend/src/taboa/lib/constants.js, frontend/src/taboa/lib/layerOrder.js,
+    frontend/src/taboa/lib/prodesLayer.js, frontend/src/taboa/lib/theme.js,
+    frontend/src/styles/app.css, vercel.json, package.json,
+    backend/package.json
+
+Como conferir
+  GET /api/health mostra rev mapa-v36. Na aba Camadas não há mais
+  "Alertas / Fonte: MapBiomas"; aparece "Alertas - PRODES" com seletor
+  vermelho, ligado na abertura. Consultar um ponto com 3.000 ha em
+  -15,66 / -39,15: o mapa mostra os desmatamentos PRODES em vermelho e
+  o aviso informa a quantidade. O PDF traz o resultado analítico do
+  PRODES e nenhuma menção ao MapBiomas. As variáveis de ambiente
+  MAPBIOMAS_EMAIL e MAPBIOMAS_PASSWORD, se existirem na Vercel, deixam
+  de ser usadas e podem ser apagadas.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

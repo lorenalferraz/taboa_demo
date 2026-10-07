@@ -22,7 +22,6 @@ function loadShapeModule() {
 }
 
 const localShape = loadShapeModule();
-const { pruneScanFileCache } = require('./scanCacheFile');
 function relatorioHandler() {
   const mod = require('./relatorio');
   const fn = mod && (mod.handleConsultaRelatorioPdf || (mod.default && mod.default.handleConsultaRelatorioPdf));
@@ -55,11 +54,11 @@ function incraFn(name) {
   throw new Error(`${name} is not a function`);
 }
 
-/** Lê o módulo de varredura na hora do pedido. Desestruturar no topo perde a função na Vercel. */
-function scanApi() {
-  const loaded = require('./scanMapbiomas');
-  if (loaded && typeof loaded.runScan === 'function') return loaded;
-  if (loaded && loaded.default && typeof loaded.default.runScan === 'function') return loaded.default;
+/** Lê o módulo na hora do pedido. Desestruturar no topo perde a função na Vercel. */
+function faixaShapeApi() {
+  const loaded = require('./faixaShape');
+  if (loaded && typeof loaded.loadFaixaShapeFromDir === 'function') return loaded;
+  if (loaded && loaded.default && typeof loaded.default.loadFaixaShapeFromDir === 'function') return loaded.default;
   return loaded || {};
 }
 
@@ -221,59 +220,11 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'mapa-v35',
+      rev: 'mapa-v36',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
     }));
-    return;
-  }
-
-  /** Varredura MapBiomas no servidor (credenciais só aqui); resposta SSE. */
-  if (targetPath === '/api/scan-alerts' && req.method === 'POST') {
-    (async () => {
-      let body;
-      try {
-        body = await readJsonBody(req);
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-        res.end(JSON.stringify({ error: 'JSON inválido no corpo do pedido.' }));
-        return;
-      }
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-        ...CORS_HEADERS
-      });
-      const send = (obj) => {
-        try {
-          res.write(`data: ${JSON.stringify(obj)}\n\n`);
-        } catch (_) {}
-      };
-      const shapeDir = path.join(ROOT, 'shape');
-      try {
-        const runScan = scanApi().runScan;
-        if (typeof runScan !== 'function') {
-          send({ type: 'error', message: 'Varredura de alertas indisponível neste servidor.' });
-        } else {
-          await runScan(shapeDir, body, send);
-        }
-      } catch (e) {
-        send({ type: 'error', message: String(e.message || e) });
-      } finally {
-        send({ type: 'done' });
-        res.end();
-      }
-    })().catch((e) => {
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-        res.end(JSON.stringify({ error: String(e.message || e) }));
-      } else {
-        try { res.end(); } catch (_) {}
-      }
-    });
     return;
   }
 
@@ -302,7 +253,7 @@ const server = http.createServer((req, res) => {
   if (targetPath === '/api/faixa/geojson' && req.method === 'GET') {
     (async () => {
       try {
-        const loadFaixaShapeFromDir = scanApi().loadFaixaShapeFromDir;
+        const loadFaixaShapeFromDir = faixaShapeApi().loadFaixaShapeFromDir;
         if (typeof loadFaixaShapeFromDir !== 'function') {
           throw new Error('loadFaixaShapeFromDir is not a function');
         }
@@ -620,6 +571,30 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // POST /api/prodes/cruzar { aoi } — desmatamentos PRODES (2020+) que cruzam a área da consulta
+  if (targetPath === '/api/prodes/cruzar' && req.method === 'POST') {
+    (async () => {
+      try {
+        const body = await readJsonBody(req);
+        if (!body?.aoi) {
+          res.writeHead(400, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+          res.end(JSON.stringify({ ok: false, error: 'Informe a área (aoi).' }));
+          return;
+        }
+        const mod = require('./relatorio/cruzamentos');
+        const fn = mod.cruzarProdes || (mod.default && mod.default.cruzarProdes);
+        const data = await fn(body.aoi);
+        sendJson(req, res, 200, { ...CORS_HEADERS, 'Cache-Control': 'no-store' }, JSON.stringify({ ok: true, ...data }));
+      } catch (e) {
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+          res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
+        }
+      }
+    })();
+    return;
+  }
+
   // POST /api/consulta/relatorio — PDF da consulta (código em backend/relatorio)
   if (targetPath === '/api/consulta/relatorio' && req.method === 'POST') {
     let handleConsultaRelatorioPdf;
@@ -647,8 +622,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   const shapeDir = path.join(ROOT, 'shape');
   const count = fs.existsSync(shapeDir) ? fs.readdirSync(shapeDir).filter(f => f.toLowerCase().endsWith('.geojson')).length : 0;
-  const pruned = pruneScanFileCache(ROOT);
-  if (pruned > 0) console.log(`Cache scan: ${pruned} arquivo(s) antigo(s) removido(s).`);
   console.log(`Backend local em http://127.0.0.1:${PORT}`);
   console.log(`Shape indexado: ${count} arquivo(s) .geojson`);
   const ensureImoveisCatalog = localShape.ensureImoveisCatalog || (localShape.default && localShape.default.ensureImoveisCatalog);

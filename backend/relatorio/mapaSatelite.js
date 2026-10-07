@@ -303,7 +303,7 @@ function scaleBarSvg(w, h, bbox) {
   </g>`;
 }
 
-function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, frame) {
+function buildOverlaySvg(mapW, mapH, toPx, aoi, point, bbox, overlays, frame) {
   const W = mapW + frame.left + frame.right;
   const H = mapH + frame.top + frame.bottom;
   const grid = coordGridSvg(mapW, mapH, bbox, toPx, frame);
@@ -314,7 +314,6 @@ function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, fr
       strokeWidth: 3,
     });
   }).join('');
-  const clipSvg = (clips || []).slice(0, 40).map((g) => geomToSvg(g, toPx, '#ef4444', '#fecaca')).join('');
   const aoiSvg = geomToSvg(aoi, toPx, '#38bdf8', '#7dd3fc');
   let pin = '';
   if (point && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1]))) {
@@ -324,7 +323,6 @@ function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, fr
   const legendItems = [
     { fill: '#38bdf8', stroke: '#7dd3fc', label: 'Área de análise' },
   ];
-  if (clips?.length) legendItems.push({ fill: '#ef4444', stroke: '#ef4444', label: 'Alerta MapBiomas' });
   const seen = new Set();
   for (const o of overlays || []) {
     const key = o.legend || o.id;
@@ -342,7 +340,6 @@ function buildOverlaySvg(mapW, mapH, toPx, aoi, clips, point, bbox, overlays, fr
     <g clip-path="url(#mapFrame)">
       ${overlaySvg}
       ${aoiSvg}
-      ${clipSvg}
       ${pin}
     </g>
     ${compassSvg(mapW)}
@@ -391,14 +388,11 @@ function shapeFromGeom(geom, toPx, scale, fill, stroke) {
 }
 
 /**
- * @param {{ aoi?: object, clips?: object[], point?: number[], overlays?: object[], frameGeom?: object, frameGeoms?: object[] }} opts
+ * @param {{ aoi?: object, point?: number[], overlays?: object[], frameGeom?: object, frameGeoms?: object[] }} opts
  * @returns {Promise<{ png: Buffer, width: number, height: number, shapes?: object[], pin?: {x:number,y:number}, legend?: object[] } | null>}
  */
 async function renderSatelliteMap(opts = {}) {
   const aoi = opts.aoi?.type ? opts.aoi : opts.aoi?.geometry || opts.aoi;
-  const clips = (opts.clips || [])
-    .map((c) => (c?.type === 'Feature' ? c.geometry : c))
-    .filter((g) => g?.type);
   const overlays = (opts.overlays || []).map((o) => ({
     ...o,
     geom: o.geom?.type === 'Feature' ? o.geom.geometry : o.geom,
@@ -492,9 +486,6 @@ async function renderSatelliteMap(opts = {}) {
   };
   for (const o of overlays) {
     push(o.geom, o.fill || '#f59e0b', o.stroke || '#b45309', o.legend || o.id);
-  }
-  for (const clip of clips.slice(0, 40)) {
-    push(clip, '#ef4444', '#ef4444', 'Alerta MapBiomas');
   }
   push(aoi, '#38bdf8', '#0369a1', 'Área de análise');
   let pin = null;

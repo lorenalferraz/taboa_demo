@@ -14,43 +14,24 @@ import {
   SHAPE_FILE,
   DEFERRED_SHAPE_GEOJSON_FILES,
   ASSENTAMENTOS_FILE,
-  ALERT_STYLE,
   ASSENTAMENTOS_STYLE,
   ASSENTAMENTOS_STANDBY_STYLE,
-  MAPBIOMAS_PAGE_LIMIT_FAIXA,
   PDF_GREEN,
   PDF_GREEN_LIGHT
 } from './lib/constants.js';
 import { tagFeaturesRegiaoTaboa, featureNomePublico, regiaoPlanejamentoLabel, cefirCarFromContainingFeatures, formatCefirCarFromFeatureProperties } from './lib/region.js';
 import {
-  geomCenter,
   parseCrsFromGeoJSON,
   inferCrsFromCoordinates,
   reprojectToWGS84,
   prepareGeoJsonForDisplay,
   needsReprojectToWgs84,
 } from './lib/geoCore.js';
-import { wktToGeoJSON, simplifiedPointsToPolygon } from './lib/wktParse.js';
-import {
-  alertRoughBbox,
-  alertGeometryAndPoint,
-  alertPointFallbackAssentamentoIndex,
-  alertHitsFaixaPlanningArea,
-  alertIntersectsAssentamentos,
-  getAssentamentoNamesForAlert,
-  alertBelongsToFeature,
-  alertBelongsToResolvedAoi,
-  computeClippedResult,
-  resolveAlertClipInShape,
-} from './lib/alertsIntersect.js';
-import { signInClient, fetchAllAlertsClient, fetchAlertsForMunicipioClient } from './lib/mapbiomasClient.js';
-import { consumeScanAlertsStream } from './lib/scanStream.js';
 import { fetchFaixaGeoJson } from './lib/faixaGeojsonClient.js';
 import { groupFaixaFeaturesByMunicipio } from './lib/faixaScanUtils.js';
 import { normalizeFaixaShapeGeoJSON } from './lib/faixaShapeNormalize.js';
 import { pickShapeFilename } from './lib/shapePick.js';
 import { applyLightTheme } from './lib/theme.js';
-import { clearCreds } from './lib/credentials.js';
 import { renderProdesAnalyticsHtml } from './lib/analyticsPanel.js';
 import { yieldToMain } from './lib/yieldToMain.js';
 import {
@@ -74,7 +55,6 @@ import {
   resolvePrioritizedCruzamentoAoi,
 } from './lib/cruzamentoPrioridade.js';
 import { mergeCruzamentoCandidatesWithWfsPriority } from './lib/cruzamentoCandidatesMerge.js';
-import { filterPropertyCandidatesForCar, linkedImoveisForAlertClip } from './lib/alertLinkedImoveis.js';
 import { fetchLocalCruzamentoCandidates } from './lib/localCruzamentoClient.js';
 import { BY_NOME, normMunNome } from './lib/faixaMunicipiosCatalog.js';
 import {
@@ -110,7 +90,6 @@ import { fetchMunicipioPorCoordenada } from './lib/ibgeMunicipioPorCoordenadaCli
 import { WFS_MIN_ZOOM, bboxCacheKey, resolveEffectiveWfsContext } from './lib/localBbox.js';
 import { collectImoveisAtPointForReport, pickCarCodeFromImovelRow, enrichLocalCamadasHa, enrichCruzamentoWithSettlementOverlap } from './lib/imovelConsulta.js';
 import { assentamentoFeatureTitle } from './lib/assentamentoMeta.js';
-import { biomaFromAlert, alertSinaisDetail, sinaisFromAlert, alertDetailRows, alertSourceLabel, buildDetailRowsHtml } from './lib/mapbiomasAlertMeta.js';
 import * as turf from '@turf/turf';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -138,92 +117,6 @@ function updateLoading(msg) {
 function hideLoading() {
   const el = document.getElementById('loadingOverlay');
   if (el) el.classList.add('hidden');
-}
-
-// ─── Web Worker helper ────────────────────────────────────────────────────
-/**
- * Executa a interseção de alertas ó assentamentos no Worker e devolve o resultado.
- * Fallback síncrono (loop direto) se o Worker falhar.
- *
- * @param {object[]} inRegion - alertas pré-filtrados pela faixa
- * @param {object[]} allFeatures - features GeoJSON dos assentamentos
- * @param {Array<number[]|null>} featBboxes - bboxes pré-computados
- * @param {(msg:string) => void} onProgress
- * @returns {Promise<{alertsByPolygon: object, allAlertCodes: string[]}>}
- */
-async function runIntersectWorker(inRegion, allFeatures, featBboxes, onProgress) {
-  const preparedAlerts = inRegion.map((a) => {
-    const { geojson, point } = alertGeometryAndPoint(a);
-    const roughBbox = alertRoughBbox(a);
-    return { alertCode: a.alertCode, geojson, point, roughBbox };
-  });
-  const preparedFeatures = allFeatures.map((f, idx) => ({
-    idx,
-    geometry: f?.geometry ?? null,
-    bbox: featBboxes[idx] ?? null
-  }));
-
-  return new Promise((resolve) => {
-    let worker;
-    try {
-      worker = new Worker(new URL('./workers/intersect.worker.js', import.meta.url), { type: 'module' });
-    } catch (_) {
-      resolve(fallbackIntersect(inRegion, allFeatures, featBboxes));
-      return;
-    }
-    worker.onmessage = (e) => {
-      if (e.data.type === 'progress') {
-        onProgress?.(`Cruzando alertas ${e.data.processed}/${e.data.total}…`);
-      } else if (e.data.type === 'result') {
-        worker.terminate();
-        resolve(e.data);
-      }
-    };
-    worker.onerror = () => {
-      worker.terminate();
-      resolve(fallbackIntersect(inRegion, allFeatures, featBboxes));
-    };
-    worker.postMessage({ alerts: preparedAlerts, features: preparedFeatures });
-  });
-}
-
-/** Interseção síncrona (fallback sem Worker) */
-function fallbackIntersect(inRegion, allFeatures, featBboxes) {
-  const nFeat = allFeatures.length;
-  const alertsByPolygon = {};
-  const allAlertCodes = [];
-  const seenCodes = new Set();
-  for (let i = 0; i < nFeat; i++) alertsByPolygon[i] = [];
-
-  for (const a of inRegion) {
-    const ab = alertRoughBbox(a);
-    if (!ab) {
-      const idx0 = alertPointFallbackAssentamentoIndex(a, allFeatures);
-      if (idx0 >= 0) {
-        alertsByPolygon[idx0].push(a.alertCode);
-        if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertCodes.push(a.alertCode); }
-      }
-      continue;
-    }
-    const [ax0, ay0, ax1, ay1] = ab;
-    let matched = false;
-    for (let oi = 0; oi < nFeat; oi++) {
-      const bb = featBboxes[oi];
-      if (!bb || ax1 < bb[0] || ax0 > bb[2] || ay1 < bb[1] || ay0 > bb[3]) continue;
-      if (!alertBelongsToFeature(a, allFeatures[oi])) continue;
-      alertsByPolygon[oi].push(a.alertCode);
-      if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertCodes.push(a.alertCode); }
-      matched = true;
-    }
-    if (!matched) {
-      const idx = alertPointFallbackAssentamentoIndex(a, allFeatures);
-      if (idx >= 0) {
-        alertsByPolygon[idx].push(a.alertCode);
-        if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertCodes.push(a.alertCode); }
-      }
-    }
-  }
-  return { alertsByPolygon, allAlertCodes };
 }
 
 /** Inicializa mapa, listeners e rotinas Taboa. */
@@ -290,87 +183,6 @@ export function bootstrapTaboa() {
       if (el) el.hidden = true;
     }
 
-    function showScanStatusPrep(message) {
-      const wrap = document.getElementById('scanStatus');
-      const raw = String(message || '');
-      if (/alerta\(s\) MapBiomas na faixa/i.test(raw)) return;
-      if (/falha em /i.test(raw)) return;
-      if (/instável|tentativa/i.test(raw) && wrap && !wrap.hidden && !wrap.classList.contains('is-indeterminate')) {
-        const metaEl = document.getElementById('scanStatusMeta');
-        if (metaEl) metaEl.textContent = 'Reconectando à API…';
-        return;
-      }
-      scanStatusActive = true;
-      const pill = document.getElementById('status');
-      const titleEl = document.getElementById('scanStatusTitle');
-      const metaEl = document.getElementById('scanStatusMeta');
-      const pctEl = document.getElementById('scanStatusPct');
-      const fill = document.getElementById('scanStatusFill');
-      const track = document.getElementById('scanStatusTrack');
-      if (pill) pill.hidden = true;
-      if (!wrap) return;
-      wrap.hidden = false;
-      if (titleEl) titleEl.textContent = 'Status';
-      if (/cache/i.test(raw)) {
-        wrap.classList.remove('is-indeterminate');
-        if (metaEl) metaEl.textContent = 'Resultado em cache';
-        if (pctEl) pctEl.textContent = '100%';
-        if (fill) {
-          fill.style.transform = 'none';
-          fill.style.width = '100%';
-        }
-        if (track) track.setAttribute('aria-valuenow', '100');
-        return;
-      }
-      wrap.classList.add('is-indeterminate');
-      if (metaEl) {
-        metaEl.textContent = /instável|tentativa/i.test(raw)
-          ? 'Reconectando à API…'
-          : 'Consultando municípios da faixa…';
-      }
-      if (pctEl) pctEl.textContent = '…';
-      if (fill) fill.style.width = '36%';
-      if (track) track.setAttribute('aria-valuenow', '0');
-    }
-
-    function updateScanStatusProgress({ completed = 0, total = 0, municipality = '' } = {}) {
-      scanStatusActive = true;
-      const wrap = document.getElementById('scanStatus');
-      const pill = document.getElementById('status');
-      const titleEl = document.getElementById('scanStatusTitle');
-      const metaEl = document.getElementById('scanStatusMeta');
-      const pctEl = document.getElementById('scanStatusPct');
-      const fill = document.getElementById('scanStatusFill');
-      const track = document.getElementById('scanStatusTrack');
-      if (pill) pill.hidden = true;
-      if (!wrap) return;
-      wrap.hidden = false;
-      wrap.classList.remove('is-indeterminate');
-      const tot = Math.max(0, Number(total) || 0);
-      const done = Math.max(0, Number(completed) || 0);
-      const pct = tot > 0 ? Math.min(100, Math.round((done / tot) * 100)) : 0;
-      const mun = String(municipality || '').trim();
-      if (titleEl) titleEl.textContent = 'Status';
-      if (metaEl) {
-        metaEl.textContent = tot > 0
-          ? (mun ? `${mun} · ${done} de ${tot} municípios` : `${done} de ${tot} municípios`)
-          : (mun || 'Consultando municípios da faixa…');
-      }
-      if (pctEl) pctEl.textContent = tot > 0 ? `${pct}%` : '…';
-      if (fill) {
-        fill.style.transform = 'none';
-        fill.style.width = `${pct}%`;
-      }
-      if (track) {
-        track.setAttribute('aria-valuenow', String(pct));
-        track.setAttribute('aria-valuemax', '100');
-      }
-    }
-
-    function showLogin() {}
-
-    function hideLogin() {}
-
     function setupAjudaConsulta() {
       const tab = document.getElementById('btnAjudaConsulta');
       const pageAjuda = document.getElementById('pageOrientacoes');
@@ -413,28 +225,13 @@ export function bootstrapTaboa() {
       syncAjudaPage();
     }
 
-    /** Mensagem pós-varredura na faixa (MapBiomas Alerta). */
-    function formatFaixaAlertsStatus() {
-      return '✓ Alertas carregados com sucesso';
-    }
-
-    let map = null, alertsLayer = null, assentamentosLayer = null, assentamentosGeoJSON = null;
-    /** Camada só visual durante a varredura MapBiomas (municípios da faixa). */
+    let map = null, assentamentosLayer = null, assentamentosGeoJSON = null;
+    /** Camada só visual com os polígonos da faixa (municípios). */
     let faixaSearchLayer = null;
     /** Municípios da faixa 05/06/07 (shape oficial) em WGS84. */
     let faixaPlanejamentoGeoJSON = null;
     const featureLayersByIndex = new Map(); // índice -> layer Leaflet para mostrar/esconder shape individual
-    const alertLayersByCode = new Map();
     const selectedShapeIndices = new Set();
-    let currentAlertsFlat = [];
-    let currentDetailIndex = 0;
-    let currentAlertsByPolygon = {};
-    let currentAllFeatures = [];
-    /** Alertas únicos na faixa 05/06/07 — base da síntese regional no PDF. */
-    let currentAlertsNaFaixaPlanejamento = [];
-    let runLoadAlertsGeneration = 0;
-    /** Promise da varredura MapBiomas em andamento (consulta aguarda antes de cruzar). */
-    let loadAlertsInFlight = null;
     /** Camadas de registros (CRA, FIAGRO…) carregadas do backend. */
     let registrosLayerGroup = null;
     let registrosBufferLayerGroup = null;
@@ -448,7 +245,7 @@ export function bootstrapTaboa() {
     /**
      * Registro de dados WFS em background — contém GeoJSON de TODAS as camadas
      * (INCRA + CAR), independente de toggle. Chave = cacheKey de bbox+camada.
-     * Usado como fonte de AOI para MapBiomas e para cruzamento.
+     * Usado como fonte de AOI para cruzamento.
      */
     const wfsBackgroundRegistry = new Map();
     let wfsBackgroundLoadInFlight = false;
@@ -537,7 +334,7 @@ export function bootstrapTaboa() {
 
     /**
      * Retorna todas as feições do registry WFS em background como candidatos de cruzamento.
-     * Exclui FUNAI (indígenas). Usado como AOI para MapBiomas e cruzamento direto.
+     * Exclui FUNAI (indígenas). Usado como AOI para cruzamento direto.
      */
     function getWfsBackgroundCandidates() {
       const out = [];
@@ -584,7 +381,6 @@ export function bootstrapTaboa() {
      */
     async function preloadAllWfsLayersInBackground(filterCtx) {
       if (!API_BASE || !filterCtx?.bbox || !filterCtx.uf) return;
-      if (loadAlertsInFlight) return;
       if (wfsBackgroundLoadInFlight) return;
 
       const effective = resolveEffectiveWfsContext(map, filterCtx);
@@ -843,7 +639,6 @@ export function bootstrapTaboa() {
       const deferredSet = new Set(DEFERRED_SHAPE_GEOJSON_FILES);
       const skipGeneric = new Set([
         SHAPE_FILE,
-        'alertas.geojson',
         'municipios.geojson',
         ASSENTAMENTOS_FILE,
         ...SHAPE_OVERLAY_LAYERS.map((c) => c.geojson),
@@ -904,7 +699,7 @@ export function bootstrapTaboa() {
       return keys;
     }
 
-    /** Camadas fundiárias pesadas — só após varredura MapBiomas (não compete com scan). */
+    /** Camadas fundiárias pesadas — carregadas depois da faixa, sem travar a abertura. */
     async function loadDeferredShapeAssets() {
       if (deferredShapesLoaded) return;
       if (deferredShapesLoadInFlight) return deferredShapesLoadInFlight;
@@ -957,7 +752,7 @@ export function bootstrapTaboa() {
             faixaPlanejamentoGeoJSON = prepared;
             const nMun = groupFaixaFeaturesByMunicipio(prepared.features).length;
             if (!quiet) {
-              setStatus(`✓ Faixa oficial (${nMun} municípios 05/06/07) — varredura MapBiomas unificada.`);
+              setStatus(`✓ Faixa oficial (${nMun} municípios).`);
             }
             fitMapToFaixaBounds();
             return true;
@@ -984,7 +779,7 @@ export function bootstrapTaboa() {
       if (ok && faixaPlanejamentoGeoJSON) {
         processAndDisplayGeoJSON(faixaPlanejamentoGeoJSON);
       }
-      setStatus('✓ Pronto. Varrendo alertas MapBiomas na faixa 05/06/07.');
+      setStatus('✓ Pronto.');
       return ok;
     }
 
@@ -999,7 +794,7 @@ export function bootstrapTaboa() {
         processAndDisplayGeoJSON(faixaPlanejamentoGeoJSON);
       }
       await loadDeferredShapeAssets();
-      setStatus('✓ Pronto. Varrendo alertas MapBiomas na faixa 05/06/07.');
+      setStatus('✓ Pronto.');
       return ok;
     }
 
@@ -1202,28 +997,6 @@ export function bootstrapTaboa() {
       window.addEventListener('resize', closeAssentList);
     }
 
-    function alertsForCurrentIncraFilter(alerts) {
-      const feat = getSelectedIncraAssentamentoFeature();
-      if (!feat) return alerts || [];
-      return (alerts || []).filter((a) => alertBelongsToFeature(a, feat));
-    }
-
-    function redrawAlertsForIncraFilter() {
-      const source = currentAlertsNaFaixaPlanejamento.length
-        ? currentAlertsNaFaixaPlanejamento
-        : currentAlertsFlat;
-      if (!map || !source?.length) return;
-      const filtered = alertsForCurrentIncraFilter(source);
-      addAlertsToMap(
-        { collection: filtered, metadata: { totalCount: filtered.length } },
-        null,
-        false,
-        currentAlertsByPolygon,
-        currentAllFeatures,
-        { fullGeometry: false, faixaPanel: true, requireShapeSelection: false, fitMap: false },
-      );
-    }
-
     let _assentamentoRedrawTimer = null;
 
     async function applyAssentamentoSelect(value, { fit = true } = {}) {
@@ -1242,7 +1015,6 @@ export function bootstrapTaboa() {
       applyIncraAssentamentoFilter(hasOne ? v : '', { map, fitMap: false });
       if (_assentamentoRedrawTimer) clearTimeout(_assentamentoRedrawTimer);
       _assentamentoRedrawTimer = setTimeout(() => {
-        redrawAlertsForIncraFilter();
         applyRegistrosFilter();
       }, 1600);
     }
@@ -1288,12 +1060,10 @@ export function bootstrapTaboa() {
     function syncLayerCheckboxesToDefault() {
       const shape = document.getElementById('chkShape');
       if (shape) shape.checked = false;
-      const alerts = document.getElementById('chkMapBiomas');
-      if (alerts) alerts.checked = true;
       const prodes = document.getElementById('chkProdes');
       if (prodes) prodes.checked = true;
       document.querySelectorAll('#remoteWmsLayersWrap .remote-wms-legend input[type="checkbox"]').forEach((inp) => {
-        if (inp.id === 'chkShape' || inp.id === 'chkMapBiomas' || inp.id === 'chkProdes') return;
+        if (inp.id === 'chkShape' || inp.id === 'chkProdes') return;
         inp.checked = false;
       });
     }
@@ -1328,13 +1098,11 @@ export function bootstrapTaboa() {
 
       syncLayerCheckboxesToDefault();
       toggleShapeLayer(false);
-      toggleMapBiomasLayer(true);
       setProdesVisible(map, true).catch(() => {});
       resetMapViewToDefault();
       setStatus('Filtros e mapa restaurados ao padrão.');
 
       requestAnimationFrame(() => {
-        try { redrawAlertsForIncraFilter(); } catch (e) { console.warn('reset alertas:', e); }
         try { applyRegistrosFilter(); } catch (e) { console.warn('reset registros:', e); }
       });
     }
@@ -1359,11 +1127,6 @@ export function bootstrapTaboa() {
       if (visible) map.addLayer(assentamentosLayer); else map.removeLayer(assentamentosLayer);
     }
 
-    function toggleMapBiomasLayer(visible) {
-      if (!map || !alertsLayer) return;
-      if (visible) map.addLayer(alertsLayer); else map.removeLayer(alertsLayer);
-    }
-
     function applyLayerToggleColors(labelEl, style) {
       const fill = style?.fillColor || style?.color || '#94a3b8';
       const stroke = style?.color || fill;
@@ -1386,44 +1149,9 @@ export function bootstrapTaboa() {
       return labelWrap;
     }
 
-    function clearAlerts() {
-      if (alertsLayer && map) { map.removeLayer(alertsLayer); alertsLayer = null; }
-      alertLayersByCode.clear();
-      updateAlertsPanelByPolygon({}, []);
-    }
-
-    /** Foca o alerta no mapa: centraliza, dá zoom e abre o popup sobre o alerta. */
-    function focusAlertOnMap(alertCode) {
-      const layer = alertLayersByCode.get(alertCode);
-      if (!map || !layer) return;
-      const b = layer.getBounds ? layer.getBounds() : null;
-      if (!b) return;
-      map.closePopup();
-      const center = b.getCenter();
-      map.fitBounds(b, { padding: [80, 80], maxZoom: 16, animate: true });
-      const openPopup = (l) => { if (l && l.openPopup) l.openPopup(center); };
-      map.once('moveend', () => {
-        if (layer.openPopup) openPopup(layer);
-        else openPopup(layer.getLayers ? layer.getLayers()[0] : null);
-      });
-    }
-
-    /** Alertas atribuídos ao polígono `idx` (chave numérica ou string após JSON/API). */
-    function alertsArrayForFeatureIndex(alertsByPolygon, idx) {
-      if (!alertsByPolygon || idx == null) return [];
-      const n = Number(idx);
-      if (Number.isNaN(n)) return [];
-      const a = alertsByPolygon[n];
-      if (Array.isArray(a)) return a;
-      const b = alertsByPolygon[String(n)];
-      return Array.isArray(b) ? b : [];
-    }
-
     function updatePolygonPopups() {
       if (!assentamentosLayer) return;
-      const allFeatures = currentAllFeatures?.length
-        ? currentAllFeatures
-        : (assentamentosGeoJSON?.features || []);
+      const allFeatures = assentamentosGeoJSON?.features || [];
       assentamentosLayer.eachLayer((layer) => {
         const i = layer._featureIndex;
         if (i == null) return;
@@ -1432,79 +1160,6 @@ export function bootstrapTaboa() {
         if (layer.getPopup()) layer.setPopupContent(html);
         else layer.bindPopup(html, { maxWidth: 380 });
       });
-    }
-
-    function refreshAlertsPanel() {
-      updateAlertsPanelByPolygon(currentAlertsByPolygon, currentAllFeatures);
-    }
-
-    function updateAlertsPanelByPolygon(alertsByPolygon, allFeatures) {
-      const abp = alertsByPolygon || {};
-      currentAlertsByPolygon = abp;
-      currentAllFeatures = allFeatures || [];
-      const header = document.getElementById('alertsCount');
-      const tabPolygon = document.getElementById('alertsTabPolygon');
-      if (!header || !tabPolygon) return;
-      const selectedSorted = [...selectedShapeIndices].sort((a, b) => a - b);
-      /** Com dados de varredura (`abp` não vazio), listar todos os assentamentos selecionados, mesmo com 0 alertas ou chave em falta no objeto. */
-      let entries = Object.keys(abp).length === 0
-        ? []
-        : selectedSorted.map((idx) => [String(idx), alertsArrayForFeatureIndex(abp, idx)]);
-      const totalAlerts = entries.reduce((s, [, arr]) => s + arr.length, 0);
-      header.textContent = totalAlerts;
-      const seen = new Set();
-      currentAlertsFlat = [];
-      for (const [, arr] of entries) {
-        for (const a of arr) {
-          if (!seen.has(a.alertCode)) { seen.add(a.alertCode); currentAlertsFlat.push(a); }
-        }
-      }
-      currentAlertsFlat.sort((a, b) => (b.detectedAt || '').localeCompare(a.detectedAt || ''));
-      currentDetailIndex = 0;
-      tabPolygon.innerHTML = '';
-      if (entries.length === 0) {
-        const div = document.createElement('div');
-        div.className = 'alerts-panel-empty';
-        div.textContent = Object.keys(abp).length > 0
-          ? 'Marque ao menos um shape para ver os alertas.'
-          : 'Carregue os dados para visualizar os alertas.';
-        tabPolygon.appendChild(div);
-        updateAlertsDetailContent();
-        updatePolygonPopups();
-        return;
-      }
-      for (const [idxStr, alerts] of entries) {
-        const idx = parseInt(idxStr, 10);
-        const f = allFeatures[idx];
-        const nome = featureNomePublico(f, idx);
-        const mun = f?.properties?.municipio || f?.properties?.nomMun;
-        const munDisp = mun ? ` (${mun})` : '';
-        const section = document.createElement('div');
-        section.className = 'alerts-polygon-section';
-        const byYear = {};
-        for (const a of alerts) {
-          const yr = a.detectedAt ? String(a.detectedAt).slice(0, 4) : '?';
-          byYear[yr] = (byYear[yr] || 0) + 1;
-        }
-        const yearLine = Object.entries(byYear).sort((x, y) => y[0].localeCompare(x[0])).map(([y, n]) => `${y}:${n}`).join(' ');
-        const sortedAlerts = [...alerts].sort((a, b) => (b.detectedAt || '').localeCompare(a.detectedAt || ''));
-        section.innerHTML = `
-          <div class="alerts-polygon-header">${nome}${munDisp}</div>
-          <div class="alerts-polygon-summary">${alerts.length} alerta(s)${yearLine ? ' · ' + yearLine : ''}</div>
-        `;
-        for (const a of sortedAlerts) {
-          const div = document.createElement('div');
-          div.className = 'alerts-panel-item';
-          div.dataset.alertCode = a.alertCode;
-          div.innerHTML = buildAlertPanelItemHtml(a);
-          div.addEventListener('click', () => focusAlertOnMap(a.alertCode));
-          section.appendChild(div);
-        }
-        tabPolygon.appendChild(section);
-      }
-      updateAlertsDetailContent();
-      updatePolygonPopups();
-      updateAnalyticPanel();
     }
 
     let prodesResumo = null;
@@ -1541,46 +1196,6 @@ export function bootstrapTaboa() {
       } else {
         body.innerHTML = '<div class="analytic-empty">Carregando o resumo do PRODES…</div>';
       }
-    }
-
-    function updateAlertsDetailContent() {
-      const card = document.getElementById('alertsDetailCard');
-      const counter = document.getElementById('alertsDetailCounter');
-      const btnPrev = document.getElementById('btnAlertPrev');
-      const btnNext = document.getElementById('btnAlertNext');
-      if (!card || !counter) return;
-      const total = currentAlertsFlat.length;
-      if (total === 0) {
-        counter.textContent = '— / —';
-        if (btnPrev) btnPrev.disabled = true;
-        if (btnNext) btnNext.disabled = true;
-        card.innerHTML = '<div class="alerts-panel-empty">Nenhum alerta para exibir.</div>';
-        return;
-      }
-      const idx = Math.max(0, Math.min(currentDetailIndex, total - 1));
-      currentDetailIndex = idx;
-      const a = currentAlertsFlat[idx];
-      const areaValDet = a._clippedAreaHa ?? a.areaHa;
-      const area = areaValDet != null ? `${Number(areaValDet).toFixed(2)} ha${a._clippedAreaHa != null ? ' ✂' : ''}` : '—';
-      const lat = a.coordenates?.latitude, lng = a.coordenates?.longitude;
-      const coords = (lat != null && lng != null) ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '—';
-      const bioma = biomaFromAlert(a);
-      const sinaisDet = alertSinaisDetail(a);
-      const src = alertSourceLabel(a);
-      const detailRows = alertDetailRows(a, { bioma, sinaisDet })
-        .filter((r) => r.label !== 'Fonte');
-      card.innerHTML = `
-        <div class="card-title">Alerta #${a.alertCode} <span class="alerts-source-badge alerts-source-mapbiomas">${escConsultaHtml(src)}</span></div>
-        <div class="card-row"><span>Área</span><span>${area}</span></div>
-        ${buildDetailRowsHtml(detailRows, escConsultaHtml, 'card-row')}
-        <div class="card-row"><span>Coordenadas</span><span>${coords}</span></div>
-        <div class="alerts-panel-item-btn" style="margin-top:12px">Clique para centralizar no mapa</div>
-      `;
-      card.onclick = () => focusAlertOnMap(a.alertCode);
-      card.style.cursor = 'pointer';
-      counter.textContent = `${idx + 1} / ${total}`;
-      if (btnPrev) btnPrev.disabled = idx <= 0;
-      if (btnNext) btnNext.disabled = idx >= total - 1;
     }
 
     function setupFilterTabs() {
@@ -1627,232 +1242,9 @@ export function bootstrapTaboa() {
         .replace(/"/g, '&quot;');
     }
 
-    const consultaScanByCoord = new Map();
-
-    function consultaCoordKey(lat, lng) {
-      return `${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
-    }
-
-    let consultaRunGeneration = 0;
-
-    function syncConsultaExecutarButton() {
-      consultaTabApi?.syncExecutarButton();
-    }
-
-    function buildAlertFeaturePairsForCruzamento(alertsFlat) {
-      const out = [];
-      for (const a of alertsFlat || []) {
-        const { geojson } = alertGeometryAndPoint(a);
-        if (!geojson) continue;
-        try {
-          out.push({ alert: a, feat: turf.feature(geojson) });
-        } catch (_) {}
-      }
-      return out;
-    }
-
-    function assentamentoShapeIndicesForPoint(lng, lat, allFeatures) {
-      const out = [];
-      if (!allFeatures?.length) return out;
-      let pt;
-      try {
-        pt = turf.point([lng, lat]);
-      } catch (_) {
-        return out;
-      }
-      for (let i = 0; i < allFeatures.length; i++) {
-        const f = allFeatures[i];
-        if (!f?.geometry) continue;
-        try {
-          if (turf.booleanPointInPolygon(pt, turf.feature(f.geometry))) out.push(i);
-        } catch (_) {}
-      }
-      return out;
-    }
-
-    async function resolveConsultaAoiAtPoint(lng, lat, filterCtx) {
-      let remote = [];
-      if (API_BASE && filterCtx?.uf) {
-        try {
-          const pt = turf.point([lng, lat]);
-          const searchAoi = turf.buffer(pt, 2.5, { units: 'kilometers' });
-          remote = await fetchRemoteCruzamentoCandidates(searchAoi, filterCtx);
-        } catch (e) {
-          console.warn('WFS consulta ponto:', e);
-        }
-      }
-      const candidates = mergeActiveCruzamentoCandidates(remote);
-      return resolvePrioritizedCruzamentoAoi(lng, lat, candidates, REGISTRO_CRUZAMENTO_BUFFER_KM);
-    }
-
-    function collectAlertsForCruzamento(alertsFlat, resolved, scanCtx) {
-      if (scanCtx) return scanCtx.alerts || [];
-      const out = [];
-      const seen = new Set();
-      for (const a of alertsFlat || []) {
-        if (!a?.alertCode || seen.has(a.alertCode)) continue;
-        if (!alertBelongsToResolvedAoi(a, resolved)) continue;
-        seen.add(a.alertCode);
-        out.push(a);
-      }
-      return out;
-    }
-
-    async function cruzarCoordenadaComAlertasFeatures(lat, lng, alertsFlat, shapeFeatsParaCruzamento, allFeaturesIndexed, localidade = null, runGeneration = null) {
-      const cancelled = () => runGeneration != null && runGeneration !== consultaRunGeneration;
-      let filterCtx;
-      if (localidade?.uf) {
-        filterCtx = {
-          uf: String(localidade.uf).trim().toUpperCase(),
-          municipio: localidade.municipio || '',
-          ibgeId: localidade.codMunicipioIbge ? Number(localidade.codMunicipioIbge) : null,
-          bbox: null,
-          label: localidade.municipio
-            ? `${localidade.municipio} (${localidade.uf})`
-            : localidade.uf,
-        };
-      } else {
-        filterCtx = await resolveFilterBbox();
-        if (!filterCtx.uf) {
-          filterCtx.uf = (document.getElementById('filterEstado')?.value || 'BA').trim().toUpperCase();
-          filterCtx.municipio = '';
-        }
-      }
-
-      const scanCtx = consultaScanByCoord.get(consultaCoordKey(lat, lng));
-      let resolved = scanCtx?.resolved || await resolveConsultaAoiAtPoint(lng, lat, filterCtx);
-      if (!resolved.containing?.length && shapeFeatsParaCruzamento?.length) {
-        const fallback = resolveRegistroCruzamentoAoi(lng, lat, shapeFeatsParaCruzamento, REGISTRO_CRUZAMENTO_BUFFER_KM);
-        if (fallback.mode === 'assentamento') {
-          resolved = { ...fallback, mode: 'poligono' };
-        }
-      }
-
-      let { mode, aoi, labels: assentamentoLabels, aoiMeta } = resolved;
-      if (mode === 'assentamento') mode = 'poligono';
-      const alertasNoBuffer = [];
-      const clipsNoBuffer = [];
-      let areaDesmatadaHa = 0;
-      const cefirCarFromShape =
-        (aoiMeta && aoiMeta.cefirCar) ||
-        (resolved.containing?.length ? cefirCarFromContainingFeatures(resolved.containing) : '') ||
-        '';
-      const imovelReport = collectImoveisAtPointForReport(resolved);
-      const cefirCarFinal =
-        (cefirCarFromShape && cefirCarFromShape.trim()) ||
-        pickCarCodeFromImovelRow(imovelReport.primaryCar) ||
-        pickCarCodeFromImovelRow(imovelReport.primaryImovel) ||
-        '';
-      const allCandidates = mergeActiveCruzamentoCandidates();
-      enrichLocalCamadasHa(
-        imovelReport.camadasHa,
-        resolved.aoi,
-        allCandidates,
-        resolved.primaryKey || null,
-      );
-      const { settlementOverlap } = enrichCruzamentoWithSettlementOverlap(
-        imovelReport,
-        resolved,
-        allCandidates,
-      );
-      const propCandsCar = filterPropertyCandidatesForCar(allCandidates);
-      const alertsToProcess = collectAlertsForCruzamento(alertsFlat, resolved, scanCtx);
-      for (let ai = 0; ai < alertsToProcess.length; ai++) {
-        if (ai > 0 && ai % 35 === 0) {
-          if (cancelled()) break;
-          await yieldToMain();
-        }
-        const a = alertsToProcess[ai];
-        try {
-          const clipResult = resolveAlertClipInShape(a, aoi.geometry);
-          if (!clipResult?.areaHa) continue;
-          const areaClip = clipResult.areaHa;
-          const clipGeom = clipResult.geom;
-          areaDesmatadaHa += areaClip;
-          let linkedImoveis = [];
-          if (clipGeom) {
-            try {
-              linkedImoveis = linkedImoveisForAlertClip(clipGeom, propCandsCar);
-            } catch (_) {}
-          }
-          alertasNoBuffer.push({
-            alertCode: a.alertCode,
-            detectedAt: a.detectedAt || '—',
-            areaHa: areaClip,
-            linkedImoveis,
-          });
-          if (clipGeom) clipsNoBuffer.push(clipGeom);
-        } catch (_) {}
-      }
-      const assentamentoShapeIndices = resolved.containing?.length
-        ? []
-        : allFeaturesIndexed?.length
-          ? assentamentoShapeIndicesForPoint(lng, lat, allFeaturesIndexed)
-          : [];
-      return {
-        lat,
-        lng,
-        mode,
-        assentamentoLabels,
-        aoiMeta,
-        assentamentoShapeIndices,
-        regionGeoJSON: aoi,
-        clipsNoBuffer,
-        alertasNoBuffer,
-        areaDesmatadaHa,
-        afetado: alertasNoBuffer.length > 0,
-        cefirCarFromShape: cefirCarFinal,
-        imoveisNoPonto: imovelReport.imoveisNoPonto,
-        primaryImovel: imovelReport.primaryImovel,
-        primaryCar: imovelReport.primaryCar,
-        camadasHa: imovelReport.camadasHa,
-        settlementOverlap,
-        prioritizedHits: resolved.prioritizedHits || [],
-        containing: resolved.containing || [],
-      };
-    }
-
-    function buildAlertPanelItemHtml(a) {
-      const areaVal = a._clippedAreaHa ?? a.areaHa;
-      const area = areaVal != null ? `${Number(areaVal).toFixed(2)} ha${a._clippedAreaHa != null ? ' ✂' : ''}` : '—';
-      const bioma = biomaFromAlert(a);
-      const sinaisDet = alertSinaisDetail(a);
-      const src = alertSourceLabel(a);
-      const srcBadge = `<span class="alerts-source-badge alerts-source-mapbiomas">${escConsultaHtml(src)}</span>`;
-      const detailRows = alertDetailRows(a, { bioma, sinaisDet });
-      const extraRows = detailRows
-        .filter((r) => !['Fonte', 'Bioma', 'Sinal'].includes(r.label))
-        .slice(0, 4)
-        .map((r) => `<div class="alerts-panel-item-row"><span>${escConsultaHtml(r.label)}</span><span>${escConsultaHtml(r.value)}</span></div>`)
-        .join('');
-      const muns = (a._munNomesInFaixa || []).join(', ');
-      const munRow = muns
-        ? `<div class="alerts-panel-item-row"><span>Município(s)</span><span>${escConsultaHtml(muns)}</span></div>`
-        : '';
-      const lat = a.coordenates?.latitude;
-      const lng = a.coordenates?.longitude;
-      const coords = (lat != null && lng != null) ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
-      const coordsRow = coords
-        ? `<div class="alerts-panel-item-row"><span>Coordenadas</span><span>${coords}</span></div>`
-        : '';
-      return `
-        <div class="alerts-panel-item-title">Alerta #${a.alertCode} ${srcBadge}</div>
-        <div class="alerts-panel-item-row"><span>Área</span><span>${area}</span></div>
-        ${bioma !== '—' ? `<div class="alerts-panel-item-row"><span>Bioma</span><span>${escConsultaHtml(bioma)}</span></div>` : ''}
-        ${sinaisDet ? `<div class="alerts-panel-item-row"><span>Sinal</span><span>${escConsultaHtml(sinaisDet)}</span></div>` : ''}
-        ${extraRows}
-        ${munRow}
-        <div class="alerts-panel-item-row"><span>Detectado</span><span>${a.detectedAt || '—'}</span></div>
-        ${a.publishedAt ? `<div class="alerts-panel-item-row"><span>Publicado</span><span>${a.publishedAt}</span></div>` : ''}
-        ${coordsRow}
-        <div class="alerts-panel-item-btn">Clique para centralizar no mapa</div>`;
-    }
-
     function setupConsultaCadastro() {
       consultaTabApi = setupConsultaTab({
         getMap: () => map,
-        getAlerts: () => currentAlertsFlat,
-        isScanInFlight: () => !!loadAlertsInFlight,
         setStatus,
         showLoading,
         updateLoading,
@@ -1875,649 +1267,17 @@ export function bootstrapTaboa() {
       });
     }
 
-    function setupAlertsTabs() {
-      const tabs = document.querySelectorAll('#alertsPanelTabs .alerts-tab[data-tab]');
-      const contents = document.querySelectorAll('#alertsPanelBody .alerts-tab-content');
-      const btnPrev = document.getElementById('btnAlertPrev');
-      const btnNext = document.getElementById('btnAlertNext');
-      tabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          const which = tab.dataset.tab;
-          tabs.forEach(t => { t.classList.toggle('active', t.dataset.tab === which); t.setAttribute('aria-pressed', t.dataset.tab === which); });
-          contents.forEach(c => {
-            const isPolygon = c.id === 'alertsTabPolygon';
-            const show = (which === 'polygon' && isPolygon) || (which === 'detail' && c.id === 'alertsTabDetail');
-            c.classList.toggle('active', show);
-            c.hidden = !show;
-          });
-        });
-      });
-      if (btnPrev) btnPrev.addEventListener('click', () => { currentDetailIndex = Math.max(0, currentDetailIndex - 1); updateAlertsDetailContent(); });
-      if (btnNext) btnNext.addEventListener('click', () => { currentDetailIndex = Math.min(currentAlertsFlat.length - 1, currentDetailIndex + 1); updateAlertsDetailContent(); });
-    }
-
-    /**
-     * Recebe a lista raw de alertas para o mapa e o mapa alertsByPolygon (sem
-     * geometrias recortadas), calcula _clippedGeom e _clippedAreaHa no cliente
-     * e retorna { listForMap, alertsByPolygonClipped } prontos para renderização.
-     */
-    function _buildClippedPayload(rawListForMap, rawAlertsByPolygon, featuresArr) {
-      const abpRaw = rawAlertsByPolygon || {};
-      const alertsByPolygonClipped = {};
-      const clippedByCode = new Map();
-
-      for (const [idxStr, rawAlerts] of Object.entries(abpRaw)) {
-        const oi = parseInt(idxStr, 10);
-        const shapeGeom = featuresArr[oi]?.geometry ?? null;
-        alertsByPolygonClipped[idxStr] = (rawAlerts || []).map((a) => {
-          const r = computeClippedResult(a, shapeGeom);
-          if (r != null) {
-            const ca = { ...a, _clippedAreaHa: r.areaHa, _clippedGeom: r.geom };
-            if (!clippedByCode.has(a.alertCode)) clippedByCode.set(a.alertCode, []);
-            clippedByCode.get(a.alertCode).push(ca);
-            return ca;
-          }
-          return a;
-        });
-      }
-
-      const seen = new Set();
-      const listForMap = [];
-      for (const raw of (rawListForMap || [])) {
-        if (seen.has(raw.alertCode)) continue;
-        seen.add(raw.alertCode);
-        const clips = clippedByCode.get(raw.alertCode);
-        if (!clips || clips.length === 0) {
-          listForMap.push(raw);
-        } else if (clips.length === 1) {
-          listForMap.push(clips[0]);
-        } else {
-          let unionGeom = clips[0]._clippedGeom;
-          let totalArea = clips[0]._clippedAreaHa || 0;
-          for (let ci = 1; ci < clips.length; ci++) {
-            try {
-              const u = turf.union(turf.feature(unionGeom), turf.feature(clips[ci]._clippedGeom));
-              if (u) unionGeom = u.geometry;
-            } catch (_) {}
-            totalArea += clips[ci]._clippedAreaHa || 0;
-          }
-          listForMap.push({ ...raw, _clippedGeom: unionGeom, _clippedAreaHa: totalArea });
-        }
-      }
-
-      return { listForMap, alertsByPolygonClipped };
-    }
-
-    function updateAlertsPanelByFaixa(faixaAlerts, alertsByPolygon, allFeatures) {
-      currentAlertsByPolygon = alertsByPolygon || {};
-      currentAllFeatures = allFeatures || [];
-      const header = document.getElementById('alertsCount');
-      const tabPolygon = document.getElementById('alertsTabPolygon');
-      if (!header || !tabPolygon) return;
-
-      const sorted = [...(faixaAlerts || [])].sort((a, b) => (b.detectedAt || '').localeCompare(a.detectedAt || ''));
-      currentAlertsFlat = sorted;
-      currentDetailIndex = 0;
-      header.textContent = sorted.length;
-
-      const groups = [
-        { key: 'litoral_sul', title: '05 – Litoral Sul' },
-        { key: 'baixo_sul', title: '06 – Baixo Sul' },
-        { key: 'extremo_sul', title: '07 – Extremo Sul' },
-        { key: 'divisa', title: 'Divisa entre regiões' },
-      ];
-
-      tabPolygon.innerHTML = '';
-      if (!sorted.length) {
-        const div = document.createElement('div');
-        div.className = 'alerts-panel-empty';
-        div.textContent = 'Nenhum alerta MapBiomas na faixa neste período.';
-        tabPolygon.appendChild(div);
-        updateAlertsDetailContent();
-        updateAnalyticPanel();
-        return;
-      }
-
-      for (const g of groups) {
-        const list = sorted.filter((a) => (a._regiaoTaboa || '') === g.key);
-        if (!list.length) continue;
-        const section = document.createElement('div');
-        section.className = 'alerts-polygon-section';
-        section.innerHTML = `<div class="alerts-polygon-header">${g.title}</div><div class="alerts-polygon-summary">${list.length} alerta(s) na região</div>`;
-        for (const a of list) {
-          const div = document.createElement('div');
-          div.className = 'alerts-panel-item';
-          div.dataset.alertCode = a.alertCode;
-          div.innerHTML = buildAlertPanelItemHtml(a);
-          div.addEventListener('click', () => focusAlertOnMap(a.alertCode));
-          section.appendChild(div);
-        }
-        tabPolygon.appendChild(section);
-      }
-
-      const semReg = sorted.filter((a) => !a._regiaoTaboa || !groups.some((g) => g.key === a._regiaoTaboa));
-      if (semReg.length) {
-        const section = document.createElement('div');
-        section.className = 'alerts-polygon-section';
-        section.innerHTML = `<div class="alerts-polygon-header">Sem região</div><div class="alerts-polygon-summary">${semReg.length} alerta(s)</div>`;
-        for (const a of semReg) {
-          const div = document.createElement('div');
-          div.className = 'alerts-panel-item';
-          div.dataset.alertCode = a.alertCode;
-          div.innerHTML = buildAlertPanelItemHtml(a);
-          div.addEventListener('click', () => focusAlertOnMap(a.alertCode));
-          section.appendChild(div);
-        }
-        tabPolygon.appendChild(section);
-      }
-
-      updateAlertsDetailContent();
-      updateAnalyticPanel();
-    }
-
-    function addAlertsToMap(alerts, assentamentosFeatures, filterByIntersection, alertsByPolygon, allFeaturesForPanel, opts = {}) {
-      const requireShapeSelection = opts.requireShapeSelection !== false;
-      const fullGeometry = !!opts.fullGeometry;
-      const faixaPanel = !!opts.faixaPanel;
-      const lightMarkers = !!opts.lightMarkers;
-      if (!map) return 0;
-      clearAlerts();
-
-      const nFeat = allFeaturesForPanel?.length ?? 0;
-
-      if (requireShapeSelection && !faixaPanel && selectedShapeIndices.size === 0) {
-        alertsLayer = L.featureGroup();
-        if (faixaPanel && alerts.collection?.length) {
-          updateAlertsPanelByFaixa(alerts.collection, alertsByPolygon, allFeaturesForPanel);
-        } else if (alertsByPolygon && allFeaturesForPanel) {
-          updateAlertsPanelByPolygon(alertsByPolygon, allFeaturesForPanel);
-        }
-        return 0;
-      }
-
-      let activeShapeFilter = null;
-      // Em modo faixaPanel todos os alertas da coleção já foram filtrados pelo backend/client;
-      // não aplicar filtro por selectedShapeIndices (que fica vazio após varredura de faixa).
-      if (!fullGeometry && !faixaPanel && nFeat > 0 && selectedShapeIndices.size < nFeat) {
-        activeShapeFilter = selectedShapeIndices;
-      }
-
-      let allowedAlertCodes = null;
-      if (!fullGeometry && activeShapeFilter && alertsByPolygon) {
-        allowedAlertCodes = new Set();
-        for (const idx of activeShapeFilter) {
-          for (const a of alertsArrayForFeatureIndex(alertsByPolygon, idx)) {
-            if (a?.alertCode) allowedAlertCodes.add(a.alertCode);
-          }
-        }
-      }
-
-      const alertShapeGeoms = new Map();
-      if (!fullGeometry && alertsByPolygon && allFeaturesForPanel) {
-        for (const [idxStr, shapeAlerts] of Object.entries(alertsByPolygon)) {
-          const oi = parseInt(idxStr, 10);
-          if (activeShapeFilter && !activeShapeFilter.has(oi)) continue;
-          const sg = allFeaturesForPanel[oi]?.geometry;
-          if (!sg) continue;
-          for (const sa of shapeAlerts || []) {
-            if (!alertShapeGeoms.has(sa.alertCode)) alertShapeGeoms.set(sa.alertCode, []);
-            alertShapeGeoms.get(sa.alertCode).push(sg);
-          }
-        }
-      }
-
-      const group = L.featureGroup();
-      const alertRenderer = rendererFor(map, 'alertas');
-      let added = 0;
-      for (const a of alerts.collection || []) {
-        if (allowedAlertCodes && !allowedAlertCodes.has(a.alertCode)) continue;
-        let geojson = null;
-        if (!lightMarkers) {
-          if (a.geometryGeojson) geojson = a.geometryGeojson;
-          if (!geojson && a.geometryWkt) geojson = wktToGeoJSON(a.geometryWkt);
-          if (!geojson && a.alertGeometry?.simplifiedPoints?.length)
-            geojson = simplifiedPointsToPolygon(a.alertGeometry.simplifiedPoints);
-        }
-        let lat = a.coordenates?.latitude, lng = a.coordenates?.longitude;
-        if ((lat == null || lng == null) && geojson) { const c = geomCenter(geojson); if (c) { lat = c[0]; lng = c[1]; } }
-        if (lat == null || lng == null) continue;
-        const fallbackPoint = [lat, lng];
-        if (filterByIntersection && assentamentosFeatures && assentamentosFeatures.length > 0) {
-          if (!alertIntersectsAssentamentos(geojson, assentamentosFeatures, fallbackPoint)) continue;
-        }
-
-        const style = ALERT_STYLE;
-        let layer = null;
-
-        if (lightMarkers) {
-          const markerColor = style.color || '#ef4444';
-          layer = L.circleMarker([lat, lng], {
-            radius: 5,
-            fillColor: markerColor,
-            color: markerColor,
-            weight: 2,
-            fillOpacity: 0.85,
-            interactive: true,
-            renderer: alertRenderer,
-          });
-        } else {
-        let renderGeom = fullGeometry ? null : (a._clippedGeom ?? null);
-        if (!renderGeom && geojson) {
-          if (!fullGeometry) {
-            const shapeGeoms = alertShapeGeoms.get(a.alertCode);
-            if (shapeGeoms && shapeGeoms.length > 0) {
-              let alertFeat = null;
-              try { alertFeat = turf.feature(geojson); } catch (_) {}
-              if (alertFeat) {
-                for (const sg of shapeGeoms) {
-                  try {
-                    const clip = turf.intersect(alertFeat, turf.feature(sg));
-                    if (!clip) continue;
-                    renderGeom = renderGeom
-                      ? (turf.union(turf.feature(renderGeom), clip)?.geometry ?? renderGeom)
-                      : clip.geometry;
-                  } catch (_) {}
-                }
-              }
-            }
-          }
-        }
-        renderGeom = renderGeom ?? geojson;
-        if (!layer) {
-        if (renderGeom && (renderGeom.coordinates || renderGeom.type === 'MultiPolygon')) {
-          try { layer = L.geoJSON(renderGeom, { style, interactive: true, renderer: alertRenderer }); } catch (_) {}
-        }
-        if (!layer) {
-          const markerColor = style.color || '#ef4444';
-          layer = L.circleMarker([lat, lng], {
-            radius: 6,
-            fillColor: markerColor,
-            color: markerColor,
-            weight: 2,
-            fillOpacity: 0.85,
-            interactive: true,
-            renderer: alertRenderer,
-          });
-        }
-        }
-        }
-        const assentamentos = getAssentamentoNamesForAlert(geojson, assentamentosFeatures || [], fallbackPoint);
-        const areaValPop = fullGeometry ? a.areaHa : (a._clippedAreaHa ?? a.areaHa);
-        const area = areaValPop != null ? `${Number(areaValPop).toFixed(2)} ha${!fullGeometry && a._clippedAreaHa != null ? ' ✂' : ''}` : '—';
-        const detected = a.detectedAt || '—';
-        const published = a.publishedAt || '—';
-        const bioma = biomaFromAlert(a);
-        const sinaisDet = alertSinaisDetail(a);
-        const coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        const regiaoLine = a._regiaoTaboa
-          ? `<div class="popup-row">Região: ${escConsultaHtml(regiaoPlanejamentoLabel(a._regiaoTaboa))}</div>`
-          : '';
-        const munLine = (a._munNomesInFaixa || []).length
-          ? `<div class="popup-row">Município(s): ${escConsultaHtml((a._munNomesInFaixa || []).join(', '))}</div>`
-          : '';
-        const srcLine = `<div class="popup-row">Fonte: ${escConsultaHtml(alertSourceLabel(a))}</div>`;
-        layer.bindPopup(`
-          <div class="popup-title">Alerta #${a.alertCode}</div>
-          ${srcLine}
-          ${regiaoLine}
-          ${munLine}
-          <div class="popup-row">Área: ${area}</div>
-          ${bioma !== '—' ? `<div class="popup-row">Bioma: ${escConsultaHtml(bioma)}</div>` : ''}
-          ${sinaisDet ? `<div class="popup-row">Sinal: ${escConsultaHtml(sinaisDet)}</div>` : ''}
-          <div class="popup-row">Detectado: ${detected}</div>
-          <div class="popup-row">Publicado: ${published}</div>
-          <div class="popup-row">Coordenadas: ${coords}</div>
-          ${assentamentos.length ? `<div class="popup-row">Shape(s): ${assentamentos.join('; ')}</div>` : ''}
-        `, { maxWidth: 360, autoPan: false });
-        group.addLayer(layer);
-        alertLayersByCode.set(a.alertCode, layer);
-        added++;
-      }
-      alertsLayer = group;
-      const chk = document.getElementById('chkMapBiomas');
-      if (chk && !chk.checked) chk.checked = true;
-      if (map) map.addLayer(alertsLayer);
-      if (faixaPanel) {
-        updateAlertsPanelByFaixa(alerts.collection || [], alertsByPolygon, allFeaturesForPanel);
-      } else if (alertsByPolygon && allFeaturesForPanel) {
-        updateAlertsPanelByPolygon(alertsByPolygon, allFeaturesForPanel);
-      }
-      if (opts.fitMap !== false) {
-        if (added > 0) {
-          try { map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch (_) {}
-        } else if (assentamentosLayer) {
-          try { map.fitBounds(assentamentosLayer.getBounds(), { padding: [50, 50], maxZoom: 16, animate: true }); } catch (_) {}
-        }
-      }
-      return added;
-    }
-
-    async function runLoadAlerts(opts = {}) {
-      const job = runLoadAlertsJob(opts);
-      loadAlertsInFlight = job;
-      syncConsultaExecutarButton();
-      try {
-        return await job;
-      } finally {
-        if (loadAlertsInFlight === job) loadAlertsInFlight = null;
-        syncConsultaExecutarButton();
-      }
-    }
-
-    async function runLoadAlertsJob({ forceRefresh = false } = {}) {
-      syncPeriodInputs();
-      let startDate = document.getElementById('startDate').value;
-      let endDate = document.getElementById('endDate').value;
-      if (!startDate) startDate = '2020-01-01';
-      if (!endDate) endDate = localTodayStr();
-      const btnPanel = document.getElementById('btnAplicarFiltros');
-      if (btnPanel) btnPanel.disabled = true;
-      const myGen = ++runLoadAlertsGeneration;
-      showScanStatusPrep();
-      initMap();
-      try {
-        if (API_BASE) {
-          await ensureFaixaPlanejamentoReady({ quiet: true });
-          if (faixaPlanejamentoGeoJSON && !assentamentosLayer) {
-            processAndDisplayGeoJSON(faixaPlanejamentoGeoJSON);
-          }
-        } else {
-          await bootstrapTaboaShapes().catch(() => {});
-          await ensureFaixaPlanejamentoReady({ quiet: true });
-        }
-        if (myGen !== runLoadAlertsGeneration) return;
-
-        if (API_BASE) {
-          setAssentamentosLayerStandby(true);
-          showScanStatusPrep();
-          let payload;
-          let serverFailed = false;
-          try {
-            payload = await consumeScanAlertsStream({
-              apiBase: API_BASE,
-              startDate,
-              endDate,
-              selectedIndices: [...selectedShapeIndices],
-              forceRefresh,
-              myGen,
-              getGeneration: () => runLoadAlertsGeneration,
-              onStatus: setStatus,
-              onScanPrep: showScanStatusPrep,
-              onScanProgress: updateScanStatusProgress,
-            });
-          } catch (err) {
-            serverFailed = true;
-            setAssentamentosLayerStandby(false);
-            if (myGen !== runLoadAlertsGeneration) return;
-            setStatus('Servidor indisponível ou erro na varredura: ' + (err.message || String(err)), true);
-            return;
-          }
-          if (myGen !== runLoadAlertsGeneration) {
-            setAssentamentosLayerStandby(false);
-            return;
-          }
-          if (payload) {
-            currentAlertsNaFaixaPlanejamento = payload.alerts || payload.currentAlertsNaFaixaPlanejamento || [];
-            selectedShapeIndices.clear();
-            for (const i of (payload.selectedIndices || [])) selectedShapeIndices.add(i);
-            const allFeatures = assentamentosGeoJSON?.features || [];
-            syncAllShapeLayersVisibility();
-            updateShapesScanList(allFeatures);
-            const useFaixaSweep = !!payload.useFaixaSweep;
-            const faixaAlerts = payload.alerts || payload.currentAlertsNaFaixaPlanejamento || [];
-            const rawListForMap = useFaixaSweep && faixaAlerts.length
-              ? faixaAlerts
-              : (payload.alerts || payload.allAlertsForMap || (payload.collection && payload.collection.collection) || []);
-            const { listForMap, alertsByPolygonClipped } = _buildClippedPayload(
-              useFaixaSweep ? faixaAlerts : rawListForMap,
-              payload.alertsByPolygon,
-              allFeatures,
-            );
-            const collectionForMap = alertsForCurrentIncraFilter(
-              useFaixaSweep && faixaAlerts.length ? faixaAlerts : listForMap,
-            );
-            const alerts = { collection: collectionForMap, metadata: { totalCount: collectionForMap.length } };
-            const mapOpts = useFaixaSweep
-              ? { fullGeometry: false, faixaPanel: true, requireShapeSelection: false }
-              : {};
-            addAlertsToMap(alerts, null, false, alertsByPolygonClipped, allFeatures, mapOpts);
-            if (useFaixaSweep && !(faixaAlerts.length > 0)) {
-              setStatus('Nenhum alerta MapBiomas na faixa 05/06/07 neste período.', true);
-            } else {
-              setStatus(formatFaixaAlertsStatus());
-            }
-            setAssentamentosLayerStandby(false);
-            return;
-          }
-          if (!serverFailed && payload === null) {
-            setAssentamentosLayerStandby(false);
-          }
-          return;
-        }
-
-        setStatus('A varredura de alertas precisa do servidor.', true);
-        return;
-
-        // ── Modo sem backend: varredura client-side usando AOI do WFS background ──
-        let allFeatures = assentamentosGeoJSON?.features || [];
-        const bgCands = getWfsBackgroundCandidates();
-        const aoiBbox = getWfsBackgroundAoiBbox();
-
-        // Usa a faixa local se ainda existir (legado), senão AOI do WFS
-        const useFaixaSweep = faixaPlanejamentoGeoJSON?.features?.length > 0;
-        const useWfsAoi = !useFaixaSweep && bgCands.length > 0 && aoiBbox;
-
-        const onMapbiomasRetry = (msg) => showScanStatusPrep(msg);
-        const token = await signInClient(email, password, onMapbiomasRetry);
-        if (myGen !== runLoadAlertsGeneration) return;
-        const alertsByPolygon = {};
-        const seenCodes = new Set();
-        const allAlertsForMap = [];
-        currentAlertsNaFaixaPlanejamento = [];
-
-        if (useFaixaSweep) {
-          const faixaFeatures = faixaPlanejamentoGeoJSON.features || [];
-          const municipios = groupFaixaFeaturesByMunicipio(faixaFeatures);
-          const nMunicipios = municipios.length;
-          if (nMunicipios === 0) {
-            setStatus('Faixa sem municípios.', true);
-            return;
-          }
-          setAssentamentosLayerStandby(true);
-          showFaixaSearchLayerOnMap();
-          const seenFaixaCodes = new Set();
-          const allFaixaRaw = [];
-          const alertCodeToObj = new Map();
-          let anyPartial = false;
-          showScanStatusPrep();
-          for (let mi = 0; mi < nMunicipios; mi++) {
-            if (myGen !== runLoadAlertsGeneration) { removeFaixaSearchLayerFromMap(); setAssentamentosLayerStandby(false); return; }
-            const { ibgeId, munNome: nomeMun, regiaoTaboa, munBbox, feats: munFeats } = municipios[mi];
-            updateScanStatusProgress({
-              completed: mi + 1,
-              total: nMunicipios,
-              municipality: nomeMun,
-            });
-            try {
-              const result = await fetchAlertsForMunicipioClient(token, {
-                startDate, endDate, limit: MAPBIOMAS_PAGE_LIMIT_FAIXA, ibgeId, munBbox, munFeats,
-              }, null, onMapbiomasRetry);
-              if (result.metadata?.partial) anyPartial = true;
-              for (const a of result.collection || []) {
-                if (!seenFaixaCodes.has(a.alertCode)) {
-                  seenFaixaCodes.add(a.alertCode);
-                  a._regiaoTaboa = regiaoTaboa;
-                  a._munNomesInFaixa = [nomeMun];
-                  allFaixaRaw.push(a);
-                  alertCodeToObj.set(a.alertCode, a);
-                } else {
-                  const existing = alertCodeToObj.get(a.alertCode);
-                  if (existing && !existing._munNomesInFaixa?.includes(nomeMun)) {
-                    if (!existing._munNomesInFaixa) existing._munNomesInFaixa = [];
-                    existing._munNomesInFaixa.push(nomeMun);
-                    if (regiaoTaboa && existing._regiaoTaboa && existing._regiaoTaboa !== regiaoTaboa && existing._regiaoTaboa !== 'divisa') existing._regiaoTaboa = 'divisa';
-                  }
-                }
-              }
-            } catch (fetchErr) { console.warn(`Erro ao buscar alertas para ${nomeMun}:`, fetchErr); }
-            await yieldToMain();
-          }
-          if (myGen !== runLoadAlertsGeneration) { removeFaixaSearchLayerFromMap(); setAssentamentosLayerStandby(false); return; }
-          if (anyPartial) { setStatus('Aviso: varredura parcial — limite de páginas da API.', true); await yieldToMain(); }
-          let inRegion = allFaixaRaw.filter((a) => alertHitsFaixaPlanningArea(a, faixaPlanejamentoGeoJSON));
-          currentAlertsNaFaixaPlanejamento = inRegion;
-          removeFaixaSearchLayerFromMap();
-          setAssentamentosLayerStandby(false);
-          if (myGen !== runLoadAlertsGeneration) return;
-          // Cruzamento com assentamentos (painel por polígono); mapa usa geometria integral MapBiomas
-          const crossFeats = allFeatures.length ? allFeatures : bgCands.map((c) => c.feature);
-          for (let origIdx = 0; origIdx < crossFeats.length; origIdx++) {
-            const feat = crossFeats[origIdx];
-            if (!feat?.geometry) { alertsByPolygon[origIdx] = []; continue; }
-            const filtered = inRegion.filter((a) => alertBelongsToFeature(a, feat));
-            alertsByPolygon[origIdx] = filtered.map((a) => {
-              const r = computeClippedResult(a, feat.geometry);
-              const aClipped = r != null ? { ...a, _clippedAreaHa: r.areaHa, _clippedGeom: r.geom } : a;
-              if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertsForMap.push(aClipped); }
-              return aClipped;
-            });
-          }
-        } else if (useWfsAoi) {
-          // ── Novo caminho: AOI das camadas WFS ──
-          setAssentamentosLayerStandby(true);
-          setStatus('Varrendo área das camadas WFS…');
-          showLoading('Buscando alertas MapBiomas na área das camadas…');
-          const onProgress = ({ page, totalCount, fetched }) => {
-            const t = totalCount != null ? ` / ${totalCount}` : '';
-            setStatus(`Alertas MapBiomas · p.${page} (${fetched}${t})`);
-          };
-          try {
-            const result = await fetchAllAlertsClient(token, { startDate, endDate, limit: 800, boundingBox: aoiBbox }, onProgress, onMapbiomasRetry);
-            if (myGen !== runLoadAlertsGeneration) { setAssentamentosLayerStandby(false); return; }
-            const rawAlerts = result.collection || [];
-            currentAlertsNaFaixaPlanejamento = rawAlerts;
-            // Cruzamento com polígonos WFS
-            for (let origIdx = 0; origIdx < bgCands.length; origIdx++) {
-              const feat = bgCands[origIdx].feature;
-              if (!feat?.geometry) { alertsByPolygon[origIdx] = []; continue; }
-              const filtered = rawAlerts.filter((a) => alertBelongsToFeature(a, feat));
-              alertsByPolygon[origIdx] = filtered.map((a) => {
-                const r = computeClippedResult(a, feat.geometry);
-                const aClipped = r != null ? { ...a, _clippedAreaHa: r.areaHa, _clippedGeom: r.geom } : a;
-                if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertsForMap.push(aClipped); }
-                return aClipped;
-              });
-            }
-          } finally {
-            hideLoading();
-            setAssentamentosLayerStandby(false);
-          }
-        } else {
-          // Sem faixa e sem WFS: varredura por bbox de cada shape local
-          setAssentamentosLayerStandby(true);
-          const selectedIndices = allFeatures.length
-            ? ([...selectedShapeIndices].length ? [...selectedShapeIndices] : allFeatures.map((_, i) => i))
-            : [];
-          const featBboxes = allFeatures.map((f) => { try { return turf.bbox(f.geometry); } catch (_) { return null; } });
-          setStatus('Varrendo cada polígono local…');
-          showLoading('Varrendo alertas…');
-          try {
-            for (const origIdx of selectedIndices) {
-              if (myGen !== runLoadAlertsGeneration) { setAssentamentosLayerStandby(false); return; }
-              const f = allFeatures[origIdx];
-              const bb = featBboxes[origIdx];
-              if (!f?.geometry || !bb) { alertsByPolygon[origIdx] = []; continue; }
-              const nomeFeat = f.properties?.nome_proje || f.properties?.denominaca || `Polígono ${origIdx + 1}`;
-              setStatus(`${nomeFeat}…`);
-              const onProg = ({ page, fetched }) => setStatus(`${nomeFeat} · p.${page} (${fetched})`);
-              const result = await fetchAllAlertsClient(token, { startDate, endDate, limit: 500, boundingBox: bb }, onProg, onMapbiomasRetry);
-              const raw = result.collection || [];
-              const filtered = raw.filter((a) => alertBelongsToFeature(a, f));
-              alertsByPolygon[origIdx] = filtered.map((a) => {
-                const r = computeClippedResult(a, f.geometry);
-                const aClipped = r != null ? { ...a, _clippedAreaHa: r.areaHa, _clippedGeom: r.geom } : a;
-                if (!seenCodes.has(a.alertCode)) { seenCodes.add(a.alertCode); allAlertsForMap.push(aClipped); }
-                return aClipped;
-              });
-              await yieldToMain();
-            }
-            for (let i = 0; i < allFeatures.length; i++) {
-              if (!selectedIndices.includes(i)) alertsByPolygon[i] = [];
-            }
-          } finally {
-            hideLoading();
-            setAssentamentosLayerStandby(false);
-          }
-          currentAlertsNaFaixaPlanejamento = [];
-        }
-
-        if (myGen !== runLoadAlertsGeneration) return;
-
-        const faixaMapOpts = useFaixaSweep
-          ? { fullGeometry: false, faixaPanel: true, requireShapeSelection: false }
-          : {};
-        const collectionForMap = alertsForCurrentIncraFilter(
-          useFaixaSweep && currentAlertsNaFaixaPlanejamento.length
-            ? currentAlertsNaFaixaPlanejamento
-            : allAlertsForMap,
-        );
-        const alerts = { collection: collectionForMap, metadata: { totalCount: collectionForMap.length } };
-        const usedFeats = allFeatures.length ? allFeatures : (bgCands.length ? bgCands.map((c) => c.feature) : []);
-        addAlertsToMap(alerts, null, false, alertsByPolygon, usedFeats, faixaMapOpts);
-        if (useFaixaSweep) {
-          const nFaixa = currentAlertsNaFaixaPlanejamento.length;
-          setStatus(nFaixa
-            ? formatFaixaAlertsStatus()
-            : 'Nenhum alerta MapBiomas na faixa 05/06/07 neste período.', !nFaixa);
-        } else {
-          setStatus(formatFaixaAlertsStatus());
-        }
-      } catch (e) {
-        if (myGen === runLoadAlertsGeneration) {
-          hideLoading();
-          removeFaixaSearchLayerFromMap();
-          setAssentamentosLayerStandby(false);
-          setStatus('Erro: ' + (e.message || String(e)), true);
-          console.error(e);
-        }
-      } finally {
-        hideLoading();
-        hideScanStatus();
-        if (btnPanel && myGen === runLoadAlertsGeneration) btnPanel.disabled = false;
-        if (API_BASE && myGen === runLoadAlertsGeneration) {
-          scheduleDeferredShapeAssetsAfterScan();
-        }
-      }
-    }
-
     initPeriodFilter();
     // ─────────────────────────────────────────────────────────────────────────────
 
-    document.getElementById('btnLogin')?.addEventListener('click', () => {
-      hideLogin();
-      runLoadAlerts().catch((e) => setStatus('Erro na varredura: ' + (e.message || e), true));
-    });
-
-    document.getElementById('btnLoginCancel')?.addEventListener('click', () => {
-      hideLogin();
-    });
-
     setupAjudaConsulta();
 
-    function onAtualizar() { runLoadAlerts({ forceRefresh: true }); }
-    // Listener principal de "Aplicar Filtros" registrado abaixo (setupCombobox / registros section)
-
-    setupAlertsTabs();
     setupFilterTabs();
     bindLayerList(document.querySelector('#remoteWmsLayersWrap .remote-wms-legend'));
     setupConsultaCadastro();
 
     document.getElementById('chkShape').addEventListener('change', function () {
       toggleShapeLayer(this.checked);
-    });
-
-    document.getElementById('chkMapBiomas')?.addEventListener('change', function () {
-      toggleMapBiomasLayer(this.checked);
     });
 
     document.getElementById('chkIncraAssentamentos')?.addEventListener('change', function () {
@@ -2690,206 +1450,6 @@ export function bootstrapTaboa() {
     setupCombobox('filterMunicipio', 'municipiosDropdown', 'btnMunicipioToggle');
     setupAssentamentoCombobox();
     // ── fim combobox ───────────────────────────────────────────────────────
-
-    // ── Cruzamento registros × alertas ─────────────────────────────────────
-    /** Última análise de cruzamento realizada — usada para recolorir buffers. */
-    let _cruzamentoResults = null;
-    /** Cruzamento «Consulta cadastro» com quadro manual para PDF — prioridade sobre CRA ao gerar relatório. */
-    let _consultaPdfRows = null;
-
-    /**
-     * Cruzamento CRA × alertas por registro: se o ponto estiver dentro de algum polígono
-     * de assentamento carregado (fazenda, INCRA, SIGEF, etc.), usa essa geometria para
-     * reter todo alerta que intersecta o assentamento; senão usa buffer de 500 m (1 km Ø).
-     * Atualiza a camada de áreas de análise e o modal de resultados.
-     */
-    async function cruzarRegistrosComAlertas() {
-      const btn = document.getElementById('btnCruzarDados');
-      const statusEl = document.getElementById('cruzamentoStatus');
-
-      if (!currentRegistrosRecords.length) {
-        setStatus('Carregue os registros antes de cruzar.', true); return;
-      }
-      if (!currentAlertsFlat.length) {
-        setStatus('Carregue os alertas antes de cruzar.', true); return;
-      }
-
-      if (btn) btn.disabled = true;
-      if (statusEl) { statusEl.hidden = false; statusEl.textContent = 'Calculando (shapes locais + WFS CAR/INCRA)…'; }
-
-      // Pequeno delay para o browser pintar o status antes do loop pesado
-      await new Promise((r) => setTimeout(r, 30));
-
-      const shapeFeatsParaCruzamento = assentamentosGeoJSON?.features?.length
-        ? assentamentosGeoJSON.features.filter((f) => f?.geometry)
-        : null;
-
-      const results = [];
-
-      for (const rec of currentRegistrosRecords) {
-        const lat = parseDMSCoord(rec['Latitude']  ?? rec['latitude']);
-        const lng = parseDMSCoord(rec['Longitude'] ?? rec['longitude']);
-        if (lat == null || lng == null) continue;
-
-        const r = await cruzarCoordenadaComAlertasFeatures(lat, lng, currentAlertsFlat, shapeFeatsParaCruzamento, assentamentosGeoJSON?.features);
-        results.push({
-          rec,
-          lat,
-          lng,
-          mode: r.mode,
-          aoiMeta: r.aoiMeta,
-          assentamentoLabels: r.assentamentoLabels,
-          assentamentoShapeIndices: r.assentamentoShapeIndices,
-          regionGeoJSON: r.regionGeoJSON,
-          clipsNoBuffer: r.clipsNoBuffer,
-          alertasNoBuffer: r.alertasNoBuffer,
-          areaDesmatadaHa: r.areaDesmatadaHa,
-          afetado: r.afetado,
-          cefirCarFromShape: r.cefirCarFromShape,
-          imoveisNoPonto: r.imoveisNoPonto,
-          primaryImovel: r.primaryImovel,
-          primaryCar: r.primaryCar,
-          camadasHa: r.camadasHa,
-          settlementOverlap: r.settlementOverlap || null,
-          prioritizedHits: r.prioritizedHits,
-          containing: r.containing,
-          apaRows: r.apaRows,
-          lat: r.lat,
-          lng: r.lng,
-        });
-      }
-
-      _cruzamentoResults = results;
-      _consultaPdfRows = null;
-
-      // Re-renderiza buffers com cores de status
-      _renderBuffersComStatus(results);
-
-      if (statusEl) {
-        const afetados = results.filter((r) => r.afetado).length;
-        statusEl.textContent = `${afetados} de ${results.length} registros com desmatamento na área analisada (assentamento ou buffer).`;
-      }
-      if (btn) btn.disabled = false;
-
-      showCruzamentoModal(results);
-    }
-
-    /** Reconstrói a camada de buffers colorindo verde/vermelho conforme resultado do cruzamento. */
-    function _renderBuffersComStatus(results) {
-      if (!map) return;
-      if (registrosBufferLayerGroup) {
-        try { map.removeLayer(registrosBufferLayerGroup); } catch (_) {}
-      }
-      const layers = [];
-      for (const { regionGeoJSON, clipsNoBuffer, afetado, rec, alertasNoBuffer, areaDesmatadaHa, mode, assentamentoLabels, aoiMeta } of results) {
-        const color = afetado ? '#ef4444' : '#22c55e';
-        const borderAssent = mode === 'poligono';
-        const tipo  = rec['Está no CRA'] || rec['Esta no CRA'] || rec['CRA'] || '';
-        const nome  = rec['Nome'] || '—';
-        const mun   = rec['Município'] || rec['Municipio'] || '—';
-        const alertList = alertasNoBuffer.length
-          ? alertasNoBuffer.map((a) => `#${a.alertCode} (${a.areaHa} ha, ${a.detectedAt})`).join('<br>')
-          : 'Nenhum';
-        const areaDesc = borderAssent && aoiMeta
-          ? `<b>Área (prioritária):</b> ${aoiMeta.humanKind} — ${aoiMeta.label} (${aoiMeta.areaHa.toFixed(2)} ha)<br>`
-          : borderAssent && (assentamentoLabels || []).length
-            ? `<b>Área (polígono):</b> ${assentamentoLabels.join('; ')}<br>`
-            : '<b>Área:</b> buffer 1 km de diâmetro (500 m de raio)<br>';
-        const popupHtml =
-          `<b>${nome}</b><br><small>${tipo} · ${mun}</small><hr style="margin:4px 0">
-           ${areaDesc}
-           <b>Alertas na área:</b><br>${alertList}
-           ${afetado ? `<br><b>Área total:</b> ${Number(areaDesmatadaHa).toFixed(4)} ha` : ''}`;
-
-        layers.push(
-          L.geoJSON(regionGeoJSON, {
-            interactive: true,
-            renderer: rendererFor(map, 'registros'),
-            style: {
-              color: borderAssent ? '#7c3aed' : color,
-              weight: borderAssent ? 2.5 : 2,
-              opacity: 0.85,
-              fillColor: color,
-              fillOpacity: afetado ? 0.15 : 0.08,
-              interactive: true,
-            },
-          }).bindPopup(popupHtml, { maxWidth: 280 })
-        );
-
-        // Fatias dos alertas recortadas exatamente ao buffer (sobrepostas em vermelho escuro)
-        for (const clipGeom of clipsNoBuffer || []) {
-          try {
-            layers.push(
-              L.geoJSON(clipGeom, {
-                interactive: true,
-                renderer: rendererFor(map, 'registros'),
-                style: { color: '#b91c1c', weight: 1.5, opacity: 0.9, fillColor: '#ef4444', fillOpacity: 0.45, interactive: true },
-              }).bindPopup(popupHtml, { maxWidth: 280 })
-            );
-          } catch (_) {}
-        }
-      }
-      registrosBufferLayerGroup = L.layerGroup(layers);
-      if (registrosVisible) registrosBufferLayerGroup.addTo(map);
-    }
-
-    /** Exibe o modal com tabela de resultados do cruzamento. */
-    function showCruzamentoModal(results) {
-      const modal    = document.getElementById('modalCruzamento');
-      const tbody    = document.getElementById('cruzamentoTableBody');
-      const summary  = document.getElementById('cruzamentoModalSummary');
-      if (!modal || !tbody) return;
-
-      const total    = results.length;
-      const afetados = results.filter((r) => r.afetado).length;
-      const limpos   = total - afetados;
-      const areaTotal = results.reduce((s, r) => s + r.areaDesmatadaHa, 0);
-
-      summary.innerHTML = `
-        <span style="color:#ef4444">⚠ ${afetados} com desmatamento</span>
-        <span style="color:#22c55e">✔ ${limpos} sem desmatamento</span>
-        <span>Área total desmatada nas áreas analisadas: <span>${Number(areaTotal).toFixed(4)} ha</span></span>`;
-
-      tbody.innerHTML = results.map((r) => {
-        const { rec, alertasNoBuffer, areaDesmatadaHa, afetado, aoiMeta } = r;
-        const nome  = rec['Nome']      || '—';
-        const cpf   = rec['CPF/CNPJ'] || rec['CPF'] || '—';
-        const mun   = rec['Município'] || rec['Municipio'] || '—';
-        const tipo  = rec['Está no CRA'] || rec['Esta no CRA'] || rec['CRA'] || '—';
-        const aoiShort = aoiMeta
-          ? `${aoiMeta.humanKind}: ${aoiMeta.label}`
-          : (r.mode === 'poligono' ? 'Polígono' : 'Buffer 1 km');
-        const badge = afetado
-          ? `<span class="crz-badge-alert">⚠ Afetado</span>`
-          : `<span class="crz-badge-ok">✔ Limpo</span>`;
-        return `<tr>
-          <td>${nome}</td>
-          <td><code>${cpf}</code></td>
-          <td>${mun}</td>
-          <td>${tipo}</td>
-          <td>${aoiShort}</td>
-          <td>${alertasNoBuffer.length}</td>
-          <td>${afetado ? Number(areaDesmatadaHa).toFixed(4) : '—'}</td>
-          <td>${badge}</td>
-        </tr>`;
-      }).join('');
-
-      modal.classList.remove('hidden');
-    }
-
-    document.getElementById('btnCruzarDados')?.addEventListener('click', () => {
-      cruzarRegistrosComAlertas().catch((e) => {
-        console.error(e);
-        setStatus('Erro no cruzamento: ' + (e.message || e), true);
-        const btn = document.getElementById('btnCruzarDados');
-        if (btn) btn.disabled = false;
-      });
-    });
-
-    document.getElementById('btnCruzamentoFechar')?.addEventListener('click', () => {
-      document.getElementById('modalCruzamento')?.classList.add('hidden');
-    });
-    // ── fim cruzamento ─────────────────────────────────────────────────────
 
     async function populateRegistrosSelect() {
       const sel = document.getElementById('selectRegistroFile');
@@ -3135,7 +1695,7 @@ export function bootstrapTaboa() {
       applyMunicipioZoomFromInput();
     });
 
-    // Botão "Aplicar Filtros" → registros + varredura MapBiomas na faixa 05/06/07
+    // Botão "Aplicar Filtros" → registros e camadas da área
     document.getElementById('btnAplicarFiltros')?.addEventListener('click', async () => {
       syncPeriodInputs();
       applyRegistrosFilter();
@@ -3148,7 +1708,6 @@ export function bootstrapTaboa() {
       } catch (e) {
         console.warn('assentamentos INCRA × área local:', e);
       }
-      await runLoadAlerts({ forceRefresh: true });
     });
 
     // Botão "Resetar" → filtros, camadas e vista do mapa no estado inicial
@@ -3181,8 +1740,6 @@ export function bootstrapTaboa() {
       } catch (e) {
         console.warn('assentamentos INCRA:', e);
       }
-      clearCreds();
-      setStatus('✓ Varredura MapBiomas na faixa 05/06/07…');
-      runLoadAlerts().catch((e) => setStatus('Erro na varredura: ' + (e.message || e), true));
+      scheduleDeferredShapeAssetsAfterScan();
     })();
 }

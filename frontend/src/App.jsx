@@ -280,12 +280,12 @@ export default function App() {
                           className="toggle-switch"
                           style={{ '--layer-color': '#ef4444', '--layer-color-soft': '#fecaca' }}
                         >
-                          <input type="checkbox" id="chkMapBiomas" defaultChecked aria-label="Alertas. Fonte: MapBiomas" />
+                          <input type="checkbox" id="chkProdes" defaultChecked aria-label="Alertas - PRODES. Desmatamento, fonte: INPE" />
                           <span className="toggle-switch-slider" aria-hidden="true" />
                         </span>
                         <span className="layer-row-text">
-                          <span className="layer-row-title">Alertas</span>
-                          <span className="layer-row-source">Fonte: MapBiomas</span>
+                          <span className="layer-row-title">Alertas - PRODES</span>
+                          <span className="layer-row-source">Desmatamento · INPE</span>
                         </span>
                       </label>
                     </li>
@@ -424,21 +424,6 @@ export default function App() {
                         </span>
                       </label>
                     </li>
-                    <li className="layer-row-item">
-                      <label className="layer-row">
-                        <span
-                          className="toggle-switch"
-                          style={{ '--layer-color': '#d97706', '--layer-color-soft': '#fcd34d' }}
-                        >
-                          <input type="checkbox" id="chkProdes" defaultChecked aria-label="PRODES desmatamento. Fonte: INPE" />
-                          <span className="toggle-switch-slider" aria-hidden="true" />
-                        </span>
-                        <span className="layer-row-text">
-                          <span className="layer-row-title">PRODES</span>
-                          <span className="layer-row-source">Desmatamento · INPE</span>
-                        </span>
-                      </label>
-                    </li>
                   </ul>
                 </div>
 
@@ -457,30 +442,6 @@ export default function App() {
               <button type="button" className="btn btn-ghost btn-sm" id="btnConsultaLimpar">Limpar</button>
               <button type="button" className="btn btn-ghost btn-sm" id="btnConsultaResetar">Resetar</button>
             </div>
-
-            {/* Painel de alertas (oculto no DOM mas necessário para o JS) */}
-            <div className="alerts-panel-header" style={{ display: 'none' }}>
-              <span>Alertas</span>
-              <span><span id="alertsCount">0</span></span>
-            </div>
-            <div className="alerts-tabs" id="alertsPanelTabs" style={{ display: 'none' }}>
-              <button type="button" className="alerts-tab active" data-tab="polygon" aria-pressed="true">Por polígono</button>
-              <button type="button" className="alerts-tab" data-tab="detail" aria-pressed="false">Detalhe</button>
-            </div>
-            <div className="alerts-panel-body" id="alertsPanelBody" style={{ display: 'none' }}>
-              <div id="alertsTabPolygon" className="alerts-tab-content active">
-                <div className="alerts-panel-empty" id="alertsPanelEmpty">Carregue os dados para visualizar os alertas.</div>
-              </div>
-              <div id="alertsTabDetail" className="alerts-tab-content" hidden>
-                <div className="alerts-detail-nav">
-                  <button type="button" className="alerts-detail-arrow" id="btnAlertPrev" title="Alerta anterior" disabled>‹</button>
-                  <span className="alerts-detail-counter" id="alertsDetailCounter">— / —</span>
-                  <button type="button" className="alerts-detail-arrow" id="btnAlertNext" title="Próximo alerta" disabled>›</button>
-                </div>
-                <div className="alerts-detail-card" id="alertsDetailCard" />
-              </div>
-            </div>
-
 
           </div>
           <button type="button" className="sidebar-toggle" id="sidebarToggle" title="Recolher / Expandir">
@@ -545,10 +506,10 @@ export default function App() {
               <div className="ajuda-step-body">
                 <h3>Clique em Consultar</h3>
                 <p>
-                  O sistema cruza a área com os alertas MapBiomas já carregados e com as restrições
+                  O sistema cruza a área com os desmatamentos do PRODES (INPE, desde 2020) e com as restrições
                   legais (unidades de conservação, reserva legal, APP, terras indígenas e
                   territórios quilombolas). No mapa da tela aparecem a área analisada, o imóvel com CAR
-                  e os alertas que tocam a área. Reserva legal e APP da propriedade saem no mapa do laudo.
+                  e os desmatamentos PRODES que tocam a área. Reserva legal e APP da propriedade saem no mapa do laudo.
                 </p>
               </div>
             </li>
@@ -557,8 +518,8 @@ export default function App() {
               <div className="ajuda-step-body">
                 <h3>Baixe o relatório</h3>
                 <p>
-                  Depois da consulta, use Baixar relatório. O PDF traz cadastro, laudo de cada alerta
-                  (com a fonte e a explicação da sigla no rodapé), restrições legais, tabela de
+                  Depois da consulta, use Baixar relatório. O PDF traz cadastro, o cruzamento com o PRODES
+                  (ano, data da imagem e área sobreposta de cada desmatamento), restrições legais, tabela de
                   unidades de conservação com a porcentagem de sobreposição, e o mapa de satélite.
                 </p>
               </div>
@@ -589,36 +550,6 @@ export default function App() {
         <div className="loading-box">
           <div className="loading-spinner" aria-hidden="true" />
           <div className="loading-label" id="loadingLabel">Processando…</div>
-        </div>
-      </div>
-
-      {/* Modal: cruzamento de dados */}
-      <div className="modal-overlay hidden" id="modalCruzamento">
-        <div className="modal modal-wide">
-          <div className="cruzamento-modal-header">
-            <h2>Cruzamento: Créditos × Desmatamento</h2>
-            <div className="cruzamento-modal-summary" id="cruzamentoModalSummary"></div>
-          </div>
-          <div className="cruzamento-table-wrap" id="cruzamentoTableWrap">
-            <table className="cruzamento-table" id="cruzamentoTable">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>CPF/CNPJ</th>
-                  <th>Município</th>
-                  <th>Operação</th>
-                  <th>Área prioritária</th>
-                  <th>Alertas na área</th>
-                  <th>Área desmatada (ha)</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="cruzamentoTableBody"></tbody>
-            </table>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="btn btn-ghost" id="btnCruzamentoFechar">Fechar</button>
-          </div>
         </div>
       </div>
 

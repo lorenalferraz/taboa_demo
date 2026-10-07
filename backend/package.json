@@ -1,7 +1,7 @@
 {
   "name": "taboa-backend",
   "version": "1.0.0",
-  "description": "API + shape files para MapBiomas Alerta",
+  "description": "API + shape files do TABOA (PRODES e camadas territoriais)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

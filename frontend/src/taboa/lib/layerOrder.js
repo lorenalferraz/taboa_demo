@@ -6,7 +6,6 @@ import L from 'leaflet';
 
 const CHECKBOX_TO_LAYER = {
   chkShape: 'municipios',
-  chkMapBiomas: 'alertas',
   chkIncraAssentamentos: 'assentamentos',
   chkInemaImoveisRurais: 'imoveis_rurais',
   chkInemaReservaLegal: 'reserva_legal',
@@ -23,7 +22,6 @@ const CHECKBOX_TO_LAYER = {
 const DEFAULT_TOP_FIRST = [
   'municipios',
   'prodes',
-  'alertas',
   'app',
   'reserva_legal',
   'imoveis_rurais',

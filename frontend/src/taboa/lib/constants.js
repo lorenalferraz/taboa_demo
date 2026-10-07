@@ -1,4 +1,3 @@
-export const STORAGE_KEY = 'mapbiomas_assentamentos_creds';
 export const CENTER_BRASIL = [-14.2, -51.9];
 export const ZOOM_BRASIL = 5;
 /** Vista inicial TABOA — faixa Litoral/Baixo/Extremo Sul (BA). */
@@ -7,7 +6,6 @@ export const ZOOM_FAIXA_TABOA = 8;
 
 /** Malha municipal da faixa TABOA (62 municípios). */
 export const SHAPE_FILE = 'municipios.geojson';
-export const ALERTAS_FILE = 'alertas.geojson';
 export const ASSENTAMENTOS_FILE = 'assentamentos.geojson';
 export const INDIGENAS_FILE = 'indigenas.geojson';
 export const QUILOMBOLAS_FILE = 'quilombolas.geojson';
@@ -16,7 +14,7 @@ export const UC_ESTADUAIS_FILE = 'uc_estaduais.geojson';
 export const UC_MUNICIPAIS_FILE = 'uc_municipais.geojson';
 
 /**
- * GeoJSONs carregados após a varredura MapBiomas (não bloqueiam scan).
+ * GeoJSONs carregados depois da faixa (não bloqueiam a abertura do mapa).
  */
 export const DEFERRED_SHAPE_GEOJSON_FILES = [
   ASSENTAMENTOS_FILE,
@@ -27,8 +25,8 @@ export const DEFERRED_SHAPE_GEOJSON_FILES = [
   UC_MUNICIPAIS_FILE,
 ];
 
-/** Contorno único no mapa (sem preenchimento). Cores por região ficam só no painel analítico. */
-export const ALERT_STYLE = {
+/** Desmatamentos PRODES no mapa: contorno vermelho com preenchimento leve. */
+export const PRODES_STYLE = {
   color: '#ef4444',
   weight: 2,
   opacity: 1,
@@ -57,12 +55,6 @@ export const MUNICIPIOS_STANDBY_STYLE = {
 };
 export const ASSENTAMENTOS_STYLE = MUNICIPIOS_STYLE;
 export const ASSENTAMENTOS_STANDBY_STYLE = MUNICIPIOS_STANDBY_STYLE;
-
-export const MAPBIOMAS_CLIENT_API_URL = 'https://plataforma.alerta.mapbiomas.org/api/v2/graphql';
-export const MAPBIOMAS_GRAPHQL_TIMEOUT_MS = 180000;
-export const MAPBIOMAS_MAX_RETRIES = 5;
-export const MAPBIOMAS_RETRY_BASE_MS = 2000;
-export const MAPBIOMAS_PAGE_LIMIT_FAIXA = 800;
 
 export const PDF_GREEN = [21, 128, 61];
 export const PDF_GREEN_LIGHT = [236, 253, 245];

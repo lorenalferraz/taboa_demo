@@ -1,7 +1,7 @@
 {
   "name": "taboa",
   "version": "1.0.0",
-  "description": "MapBiomas Alerta · monitoramento TABOA — desenvolvimento local",
+  "description": "PRODES · monitoramento TABOA — desenvolvimento local",
   "scripts": {
     "start": "node backend/server.js",
     "start:backend": "cd backend && npm start",

@@ -1,5 +1,5 @@
 /**
- * Laudo PDF da consulta TABOA × MapBiomas Alerta.
+ * Laudo PDF da consulta TABOA × PRODES (INPE).
  */
 const fs = require('fs');
 const path = require('path');
@@ -108,49 +108,9 @@ function sourceLabel(source) {
   return map[source] || source || '—';
 }
 
-const FONTE_NOTAS = [
-  { test: /deter/i, sigla: 'DETER', texto: 'Sistema de Detecção de Desmatamento em Tempo Real, do INPE.', url: 'http://www.obt.inpe.br/OBT/assuntos/programas/amazonia/deter' },
-  { test: /glad/i, sigla: 'GLAD', texto: 'Global Land Analysis and Discovery, da University of Maryland.', url: 'https://glad.umd.edu' },
-  { test: /inema/i, sigla: 'INEMA', texto: 'Instituto do Meio Ambiente e Recursos Hídricos da Bahia.', url: 'https://www.inema.ba.gov.br' },
-  { test: /ief/i, sigla: 'IEF', texto: 'Instituto Estadual de Florestas de Minas Gerais.', url: 'https://www.ief.mg.gov.br' },
-  { test: /prodes/i, sigla: 'PRODES', texto: 'Programa de Monitoramento do Desmatamento, do INPE.', url: 'http://www.obt.inpe.br/OBT/assuntos/programas/amazonia/prodes' },
-  { test: /sad/i, sigla: 'SAD', texto: 'Sistema de Alerta de Desmatamento, do Imazon, integrado ao MapBiomas Alerta.', url: 'https://imazon.org.br' },
-  { test: /sipam/i, sigla: 'SIPAM SAR', texto: 'Sistema de Proteção da Amazônia, com imagens de radar.', url: 'https://www.gov.br/sipam' },
-  { test: /sirad/i, sigla: 'Sirad-X', texto: 'Sistema de alerta de desmatamento por radar.', url: 'https://plataforma.alerta.mapbiomas.org' },
-  { test: /sos/i, sigla: 'SOS Mata Atlântica / INPE', texto: 'Monitoramento da Mata Atlântica pela Fundação SOS Mata Atlântica e pelo INPE.', url: 'https://www.sosma.org.br' },
-];
-
-function collectFonteNotas(alerts) {
-  const notes = [];
-  const seen = new Set();
-  for (const a of alerts || []) {
-    const fonte = String(a.fonte || a.sinal || '');
-    for (const n of FONTE_NOTAS) {
-      if (!n.test.test(fonte)) continue;
-      if (seen.has(n.sigla)) continue;
-      seen.add(n.sigla);
-      notes.push(n);
-    }
-  }
-  if ((alerts || []).length) {
-    notes.push({
-      sigla: 'MapBiomas Alerta',
-      texto: 'Plataforma que consolida as fontes acima.',
-      url: 'https://plataforma.alerta.mapbiomas.org',
-    });
-  }
-  return notes;
-}
-
 function textoUtil(value) {
   const s = txt(value);
   return s === '—' ? '' : s;
-}
-
-function markFonte(value) {
-  const s = txt(value);
-  if (s === '—') return s;
-  return `${s} *`;
 }
 
 function municipiosDosImoveis(imoveis) {
@@ -194,7 +154,6 @@ function isPointBuffer(raw) {
 
 function preparePayload(raw = {}) {
   const generatedAt = String(raw.generatedAt || '').trim() || nowPtBr();
-  const alerts = Array.isArray(raw.alerts) ? raw.alerts : [];
   return {
     generatedAt,
     origem: raw.origem || sourceLabel(raw.source),
@@ -202,12 +161,7 @@ function preparePayload(raw = {}) {
     coord: coordLabel(raw),
     mun: municipioLabel(raw),
     areaHa: areaLabel(raw.areaHa),
-    nAlertas: raw.nAlertas != null ? String(raw.nAlertas) : String(alerts.length),
-    overlapPct: raw.overlapPctLabel || formatPct(raw.overlapPct),
-    overlapHa: areaLabel(raw.overlapHa),
-    alerts,
     aoi: raw.aoi,
-    clips: raw.clips,
     point: raw.point,
     nome: txt(raw.nome),
     cpf: txt(raw.cpf),
@@ -641,22 +595,6 @@ function drawProdesTable(doc, y, itens) {
   ]));
 }
 
-function drawAlertLaudo(doc, y, alert, mun, index, total) {
-  const title = total > 1 ? `LAUDO DO ALERTA (${index} de ${total})` : 'LAUDO DO ALERTA';
-  y = drawSectionTitle(doc, y, title);
-  y = drawInfoTable(doc, y, [
-    { label: 'Código do alerta', value: alert.codigo || alert.alertCode },
-    { label: 'Área do alerta', value: alert.areaOriginal || formatHa(alert.areaHa) },
-    { label: 'Fonte do alerta', value: markFonte(alert.fonte || alert.sinal) },
-    { label: 'Biomas', value: alert.bioma },
-    { label: 'Município / UF', value: textoUtil(alert.municipio) || mun },
-    { label: 'Data do alerta', value: alert.detectado || alert.detectedAt },
-    { label: 'Tamanho da sobreposição', value: alert.areaRecorte || formatHa(alert._clippedAreaHa) },
-    { label: 'Sobreposição', value: alert.sobreposicao },
-  ]);
-  return y;
-}
-
 function drawMapVectors(doc, mapImg, imgX, imgY, imgW, imgH) {
   const sx = imgW / Math.max(mapImg.width, 1);
   const sy = imgH / Math.max(mapImg.height, 1);
@@ -907,7 +845,6 @@ async function buildConsultaPdf(raw = {}) {
   try {
     mapImg = await renderSatelliteMap({
       aoi: payload.aoi,
-      clips: payload.clips,
       point: payload.point,
       frameGeoms: imoveisNoMapa.map((im) => im.geometry),
       overlays: [
@@ -934,7 +871,7 @@ async function buildConsultaPdf(raw = {}) {
         })),
         ...(prodesCruzamento.itens || []).slice(0, 12).map((it) => ({
           id: 'prodes',
-          legend: 'PRODES',
+          legend: 'Alertas - PRODES',
           fill: '#ef4444',
           stroke: '#ef4444',
           geom: it.geometry,
@@ -967,7 +904,7 @@ async function buildConsultaPdf(raw = {}) {
       info: {
         Title: 'Relatório de análise de Imóveis Rurais',
         Author: 'TABOA',
-        Subject: 'Cruzamento de área com alertas MapBiomas e camadas territoriais',
+        Subject: 'Cruzamento de área com o PRODES e camadas territoriais',
         CreationDate: new Date(),
       },
     });
@@ -978,7 +915,6 @@ async function buildConsultaPdf(raw = {}) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
     applyFonts(doc);
-    doc._taboaFonteNotas = collectFonteNotas(payload.alerts);
 
     let y = drawHeader(doc, generatedAt);
 
@@ -998,24 +934,6 @@ async function buildConsultaPdf(raw = {}) {
     }
 
     y = drawSectionTitle(doc, y, 'RESULTADO ANALÍTICO DA CONSULTA');
-    const alerts = payload.alerts || [];
-    if (!alerts.length) {
-      y = drawInfoTable(doc, y, [
-        { label: 'Sobreposição com alerta', value: 'Sobreposição não identificada com alertas.', tone: 'ok' },
-      ]);
-    } else {
-      y = drawInfoTable(doc, y, [
-        { label: 'Sobreposição com alerta', value: 'Identificada' },
-        { label: 'Alertas na área', value: String(alerts.length) },
-        { label: 'Tamanho da sobreposição', value: payload.overlapHa },
-        { label: 'Percentual sobreposto', value: payload.overlapPct },
-      ]);
-      alerts.forEach((alert, i) => {
-        y = drawAlertLaudo(doc, y, alert, payload.mun, i + 1, alerts.length);
-      });
-    }
-
-    y = drawSectionTitle(doc, y, 'CRUZAMENTO COM O PRODES');
     if (prodesCruzamento.erro) {
       y = drawInfoTable(doc, y, [
         { label: 'Sobreposição com PRODES', value: 'Não foi possível consultar o PRODES.', fullWidth: true },

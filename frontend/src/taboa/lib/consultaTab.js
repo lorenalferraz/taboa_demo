@@ -1,6 +1,6 @@
 /**
  * Aba Consulta: coordenadas, KML (ponto/polígono), clique/desenho no mapa,
- * buffer do ponto pela área da propriedade e relatório de cruzamento com alertas MapBiomas.
+ * buffer do ponto pela área da propriedade e relatório de cruzamento com o PRODES.
  */
 import L from 'leaflet';
 import { parseDMSCoord } from './registros.js';
@@ -9,9 +9,6 @@ import { buildConsultaAoi, parseHectares } from './consultaAoi.js';
 import { buildConsultaReportHtml, buildConsultaPdfPayload, kindLabelPt, sourceLabelPt } from './consultaReport.js';
 import { formatHaPtBr } from './formatPtBr.js';
 import { getApiBase } from './config.js';
-import { filterAlertsInAoiAsync } from './consultaAoiFilter.js';
-import { resolveAlertClipInShape, alertGeometryAndPoint } from './alertsIntersect.js';
-import { yieldToMain } from './yieldToMain.js';
 import * as turf from '@turf/turf';
 import { FAIXA_BBOX } from './faixaShapeNormalize.js';
 
@@ -23,7 +20,7 @@ const DRAW_STYLE = { color: '#0284c7', weight: 2.2, dashArray: '10 7', fill: fal
 const RUBBER_STYLE = { color: '#38bdf8', weight: 2, dashArray: '7 6', fill: false, className: 'consulta-draw-rubber', interactive: false };
 const CLOSE_STYLE = { color: '#0ea5e9', weight: 2, dashArray: '5 5', fill: false, className: 'consulta-draw-close', interactive: false };
 const GHOST_STYLE = { color: '#0284c7', weight: 1, fillColor: '#38bdf8', fillOpacity: 0.12, dashArray: '6 4', className: 'consulta-draw-ghost', interactive: false };
-const CLIP_STYLE = { color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.35, interactive: false };
+const PRODES_STYLE = { color: '#ef4444', weight: 2, fillColor: '#ef4444', fillOpacity: 0.35, interactive: false };
 const VERTEX_STYLE = { radius: 5, color: '#0c4a6e', weight: 2, fillColor: '#38bdf8', fillOpacity: 1, interactive: false };
 const VERTEX_START_STYLE = { radius: 6, color: '#0369a1', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false };
 const SNAP_PX = 22;
@@ -42,26 +39,6 @@ function compactGeom(input, maxPts = 360) {
     return feat.geometry || null;
   } catch (_) {
     return input.geometry || (input.type && input.coordinates ? input : null);
-  }
-}
-
-function unionOverlapHa(clips, fallbackHa) {
-  try {
-    const feats = (clips || [])
-      .map((g) => {
-        try {
-          return turf.feature(g);
-        } catch (_) {
-          return null;
-        }
-      })
-      .filter((f) => f?.geometry);
-    if (!feats.length) return 0;
-    if (feats.length === 1) return turf.area(feats[0]) / 10000;
-    const u = turf.union(turf.featureCollection(feats));
-    return u ? turf.area(u) / 10000 : fallbackHa;
-  } catch (_) {
-    return fallbackHa;
   }
 }
 
@@ -99,6 +76,19 @@ function formatMetros(m) {
   if (!Number.isFinite(n)) return '';
   const rounded = n >= 10 ? Math.round(n) : Math.round(n * 10) / 10;
   return `${String(rounded).replace('.', ',')} m`;
+}
+
+async function fetchProdesCruzamento(aoi) {
+  const base = getApiBase();
+  if (!base) throw new Error('O cruzamento com o PRODES precisa do servidor.');
+  const res = await fetch(`${String(base).replace(/\/$/, '')}/api/prodes/cruzar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aoi }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) throw new Error(data?.error || 'Não foi possível consultar o PRODES.');
+  return data;
 }
 
 async function fetchShapeInBbox(file, bbox) {
@@ -182,8 +172,6 @@ function nowPtBr() {
  * @param {object} ctx
  * @param {() => import('leaflet').Map | null} [ctx.getMap]
  * @param {import('leaflet').Map} [ctx.map]
- * @param {() => object[]} ctx.getAlerts
- * @param {() => boolean} ctx.isScanInFlight
  * @param {(msg: string, isError?: boolean) => void} ctx.setStatus
  * @param {(msg: string) => void} ctx.showLoading
  * @param {(msg: string) => void} ctx.updateLoading
@@ -192,8 +180,6 @@ function nowPtBr() {
  */
 export function setupConsultaTab(ctx) {
   const {
-    getAlerts,
-    isScanInFlight,
     setStatus,
     showLoading,
     updateLoading,
@@ -632,7 +618,7 @@ export function setupConsultaTab(ctx) {
     setKmlLabel('');
     setKmlError('');
     setPolygonGeometry(feature, 'map-polygon');
-    setStatus('Polígono definido. Clique em Consultar para cruzar com os alertas.', false);
+    setStatus('Polígono definido. Clique em Consultar para cruzar com o PRODES.', false);
   }
 
   function sameVertex(a, b) {
@@ -724,21 +710,12 @@ export function setupConsultaTab(ctx) {
 
   function syncExecutarButton() {
     if (!btnRun) return;
-    const scanning = !!isScanInFlight?.();
-    btnRun.disabled = scanning;
-    btnRun.title = scanning
-      ? 'Aguarde o fim da varredura de alertas (Aplicar filtros).'
-      : 'Cruzar a área com os alertas MapBiomas';
+    btnRun.disabled = false;
+    btnRun.title = 'Cruzar a área com o PRODES';
   }
 
   async function runConsulta() {
     const myGen = ++runGeneration;
-    if (isScanInFlight?.()) {
-      resultEl.hidden = false;
-      resultEl.innerHTML = '<p class="consulta-result-msg consulta-result-err">Varredura de alertas em andamento. Aguarde terminar e clique em <strong>Consultar</strong> novamente.</p>';
-      setStatus('Consulta indisponível enquanto a varredura roda.', true);
-      return;
-    }
     applyCoordsFromInputs();
     const built = aoiOf(geometry);
     if (!built.ok) {
@@ -748,38 +725,16 @@ export function setupConsultaTab(ctx) {
       return;
     }
 
-    const alerts = getAlerts?.() || [];
-    showLoading('Cruzando área com alertas MapBiomas…');
-    updateLoading('Filtrando alertas na área');
+    showLoading('Cruzando área com o PRODES…');
+    updateLoading('Consultando o PRODES na área');
     resultEl.hidden = false;
-    resultEl.innerHTML = '<p class="consulta-result-msg">Cruzando a área de análise com os alertas MapBiomas…</p>';
+    resultEl.innerHTML = '<p class="consulta-result-msg">Cruzando a área de análise com o PRODES…</p>';
 
     try {
-      const inAoi = await filterAlertsInAoiAsync(alerts, { aoi: built.aoi }, () => myGen !== runGeneration);
+      const aoi = compactGeom(built.aoi);
+      const prodes = await fetchProdesCruzamento(aoi);
       if (myGen !== runGeneration) return;
-
-      const hits = [];
-      const clips = [];
-      const alertGeoms = [];
-      let totalClipHa = 0;
-      for (let i = 0; i < inAoi.length; i++) {
-        if (i > 0 && i % 40 === 0) {
-          if (myGen !== runGeneration) return;
-          await yieldToMain();
-        }
-        const a = inAoi[i];
-        const clip = resolveAlertClipInShape(a, built.aoi.geometry);
-        if (!clip?.areaHa) continue;
-        a._clippedAreaHa = clip.areaHa;
-        a._clippedGeom = clip.geom || null;
-        totalClipHa += clip.areaHa;
-        hits.push(a);
-        if (clip.geom) clips.push(clip.geom);
-        const { geojson } = alertGeometryAndPoint(a);
-        const full = geojson?.type === 'Feature' ? geojson.geometry : geojson;
-        if (full?.type) alertGeoms.push(full);
-      }
-      if (myGen !== runGeneration) return;
+      const prodesGeoms = (prodes.itens || []).map((it) => it.geometry).filter((g) => g?.type);
 
       const { lat, lng } = refLatLng();
       let municipio = null;
@@ -790,34 +745,23 @@ export function setupConsultaTab(ctx) {
         } catch (_) {}
       }
 
-      const overlapHa = unionOverlapHa(clips, totalClipHa);
-      const overlapPct = built.areaHa > 0
-        ? Math.min(100, Math.max(0, (overlapHa / built.areaHa) * 100))
-        : 0;
-
-      const reportOpts = {
+      lastPdfPayload = buildConsultaPdfPayload({
         source: geometry.source,
         kind: geometry.kind,
         mode: built.mode,
         areaHa: built.areaHa,
         municipio,
-        alerts: hits,
-        totalClipHa,
-        overlapHa,
-        overlapPct,
         lat,
         lng,
         generatedAt: nowPtBr(),
-        aoi: compactGeom(built.aoi),
-        clips: alertGeoms.map((g) => compactGeom(g)).filter(Boolean).slice(0, 40),
+        aoi,
         point: geometry.kind === 'point' && Number.isFinite(geometry.lng) && Number.isFinite(geometry.lat)
           ? [geometry.lng, geometry.lat]
           : null,
         ...cadastroPessoa(),
         car: geometry.car || (imovelIn?.value || '').trim(),
-      };
-      lastPdfPayload = buildConsultaPdfPayload(reportOpts);
-      resultEl.innerHTML = buildConsultaReportHtml({ noAlertsLoaded: !alerts.length });
+      });
+      resultEl.innerHTML = buildConsultaReportHtml();
       bindPdfButton(resultEl);
 
       clearPreview();
@@ -838,8 +782,8 @@ export function setupConsultaTab(ctx) {
       territorio.apps.forEach((feat) => {
         layers.push(L.geoJSON(feat, { style: () => APP_STYLE }));
       });
-      alertGeoms.forEach((geom) => {
-        layers.push(L.geoJSON(geom, { style: () => CLIP_STYLE }));
+      prodesGeoms.forEach((geom) => {
+        layers.push(L.geoJSON(geom, { style: () => PRODES_STYLE }));
       });
       if (geometry.kind === 'point' && Number.isFinite(geometry.lat) && Number.isFinite(geometry.lng)) {
         layers.push(L.marker([geometry.lat, geometry.lng], { icon: getPinIcon() }));
@@ -860,10 +804,9 @@ export function setupConsultaTab(ctx) {
         } catch (_) {}
       }
 
-      const msg = hits.length
-        ? `Consulta: ${hits.length} alerta(s) MapBiomas na área.`
-        : (alerts.length ? 'Consulta: nenhum alerta na área.' : 'Consulta: os alertas ainda estão sendo carregados.');
-      setStatus(msg, false);
+      setStatus(prodes.count
+        ? `Consulta: ${prodes.count} desmatamento(s) PRODES na área.`
+        : 'Consulta: nenhum desmatamento PRODES na área.', false);
     } catch (e) {
       resultEl.innerHTML = `<p class="consulta-result-err">${esc(e.message || e)}</p>`;
       setStatus('Erro na consulta: ' + (e.message || String(e)), true);
@@ -952,7 +895,7 @@ export function setupConsultaTab(ctx) {
     const crsNote = parsed.crsFrom && parsed.crsFrom !== 'EPSG:4326'
       ? ` (${parsed.crsLabel || parsed.crsFrom} → WGS84)`
       : '';
-    setStatus(`KML carregado${crsNote}. Clique em Consultar para cruzar com os alertas.`, false);
+    setStatus(`KML carregado${crsNote}. Clique em Consultar para cruzar com o PRODES.`, false);
   });
 
   document.addEventListener('click', (ev) => {

@@ -972,7 +972,6 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   vertical-align: middle;
   margin-left: 4px;
 }
-.alerts-source-mapbiomas { background: #fee2e2; color: #b91c1c; }
 .shapes-scan-section { padding: 10px 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .shapes-scan-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 600; }
 .shapes-scan-select {
@@ -1040,7 +1039,7 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
 .crz-badge-ok { display: inline-block; padding: 2px 8px; border-radius: 99px; background: rgba(34,197,94,.15); color: #22c55e; font-weight: 600; font-size: 0.72rem; }
 .crz-badge-alert { display: inline-block; padding: 2px 8px; border-radius: 99px; background: rgba(239,68,68,.15); color: #ef4444; font-weight: 600; font-size: 0.72rem; }
 
-/* ── Consulta (coordenadas / KML / mapa × MapBiomas) ─────────────────────── */
+/* ── Consulta (coordenadas / KML / mapa × PRODES) ─────────────────────── */
 #filterTabConsulta.consulta-tab-content {
   overflow-y: auto;
   overflow-x: hidden;
