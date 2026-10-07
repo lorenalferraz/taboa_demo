@@ -99,6 +99,40 @@ Como conferir
   inteiros e o conjunto fica no meio da imagem.
 
 
+4. Popups e ordem das camadas — 07/10/2026
+------------------------------------------
+
+Problema
+  Alguns popups não abriam. Camadas pesadas eram desenhadas num canvas que
+  cobria o mapa e engolia o clique. O alerta também não aceitava clique no
+  interior, só no traço. Não havia como escolher qual camada fica por cima.
+
+O que passou a valer
+  - As camadas da aba Camadas usam desenho que deixa o clique passar onde
+    não há polígono. O alerta aceita clique na área, não só na borda.
+  - Cada linha da aba Camadas tem setas para subir ou descer. A camada no
+    topo da lista fica por cima no mapa e é a que abre o popup.
+  - Ordem inicial, de cima para baixo: alertas, APP, reserva legal, imóveis
+    rurais, assentamentos, terras indígenas, quilombolas, UCs municipais,
+    estaduais e federais, municípios.
+  - A consulta desenhada no mapa não bloqueia o popup das camadas.
+
+Arquivos
+  - frontend/src/taboa/lib/layerOrder.js
+  - frontend/src/taboa/lib/localMapLayers.js
+  - frontend/src/taboa/lib/constants.js
+  - frontend/src/taboa/lib/registros.js
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/App.jsx
+  - frontend/src/styles/app.css
+
+Como conferir
+  Na aba Camadas, ligar duas camadas que se cruzam e clicar no polígono:
+  abre o popup da que está mais acima. Subir ou descer uma camada muda a
+  sobreposição e qual popup responde.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

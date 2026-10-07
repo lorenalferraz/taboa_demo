@@ -60,6 +60,7 @@ import {
   syncPeriodInputs,
 } from './lib/periodFilter.js';
 import { setupMapPopupPlacement } from './lib/popupPlacement.js';
+import { applyLayerOrder, bindLayerList, rendererFor } from './lib/layerOrder.js';
 import {
   buildRegistrosLayer,
   buildRegistrosBufferLayer,
@@ -678,9 +679,10 @@ export function bootstrapTaboa() {
           delete el._leaflet_id;
         } catch (_) {}
       }
-      map = L.map(el, { zoomControl: false, preferCanvas: true }).setView(CENTER_FAIXA_TABOA, ZOOM_FAIXA_TABOA);
+      map = L.map(el, { zoomControl: false, preferCanvas: false }).setView(CENTER_FAIXA_TABOA, ZOOM_FAIXA_TABOA);
       window.__taboaLeafletMap = map;
       setupMapPopupPlacement(map);
+      applyLayerOrder(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles &copy; Esri',
@@ -738,7 +740,7 @@ export function bootstrapTaboa() {
       assentamentosLayer = L.geoJSON(geojson, {
         style: ASSENTAMENTOS_STYLE,
         interactive: true,
-        renderer: L.svg({ padding: 0.4 }),
+        renderer: rendererFor(map, 'municipios'),
         onEachFeature: (f, layer) => {
           const idx = featureIndex++;
           layer._featureIndex = idx;
@@ -2214,6 +2216,7 @@ export function bootstrapTaboa() {
       }
 
       const group = L.featureGroup();
+      const alertRenderer = rendererFor(map, 'alertas');
       let added = 0;
       for (const a of alerts.collection || []) {
         if (allowedAlertCodes && !allowedAlertCodes.has(a.alertCode)) continue;
@@ -2242,7 +2245,9 @@ export function bootstrapTaboa() {
             fillColor: markerColor,
             color: markerColor,
             weight: 2,
-            fillOpacity: 0,
+            fillOpacity: 0.85,
+            interactive: true,
+            renderer: alertRenderer,
           });
         } else {
         let renderGeom = fullGeometry ? null : (a._clippedGeom ?? null);
@@ -2269,12 +2274,18 @@ export function bootstrapTaboa() {
         renderGeom = renderGeom ?? geojson;
         if (!layer) {
         if (renderGeom && (renderGeom.coordinates || renderGeom.type === 'MultiPolygon')) {
-          try { layer = L.geoJSON(renderGeom, { style }); } catch (_) {}
+          try { layer = L.geoJSON(renderGeom, { style, interactive: true, renderer: alertRenderer }); } catch (_) {}
         }
         if (!layer) {
           const markerColor = style.color || '#ef4444';
           layer = L.circleMarker([lat, lng], {
-            radius: 6, fillColor: markerColor, color: markerColor, weight: 2, fillOpacity: 0
+            radius: 6,
+            fillColor: markerColor,
+            color: markerColor,
+            weight: 2,
+            fillOpacity: 0.85,
+            interactive: true,
+            renderer: alertRenderer,
           });
         }
         }
@@ -2647,6 +2658,7 @@ export function bootstrapTaboa() {
 
     setupAlertsTabs();
     setupFilterTabs();
+    bindLayerList(document.querySelector('#remoteWmsLayersWrap .remote-wms-legend'));
     setupConsultaCadastro();
 
     document.getElementById('chkShape').addEventListener('change', function () {
@@ -2923,12 +2935,15 @@ export function bootstrapTaboa() {
 
         layers.push(
           L.geoJSON(regionGeoJSON, {
+            interactive: true,
+            renderer: rendererFor(map, 'registros'),
             style: {
               color: borderAssent ? '#7c3aed' : color,
               weight: borderAssent ? 2.5 : 2,
               opacity: 0.85,
               fillColor: color,
               fillOpacity: afetado ? 0.15 : 0.08,
+              interactive: true,
             },
           }).bindPopup(popupHtml, { maxWidth: 280 })
         );
@@ -2938,7 +2953,9 @@ export function bootstrapTaboa() {
           try {
             layers.push(
               L.geoJSON(clipGeom, {
-                style: { color: '#b91c1c', weight: 1.5, opacity: 0.9, fillColor: '#ef4444', fillOpacity: 0.45 },
+                interactive: true,
+                renderer: rendererFor(map, 'registros'),
+                style: { color: '#b91c1c', weight: 1.5, opacity: 0.9, fillColor: '#ef4444', fillOpacity: 0.45, interactive: true },
               }).bindPopup(popupHtml, { maxWidth: 280 })
             );
           } catch (_) {}
@@ -3132,7 +3149,9 @@ export function bootstrapTaboa() {
         assentamentosGeoJSON?.features?.filter((f) => f?.geometry),
         cruzamentoCandidates && cruzamentoCandidates.length ? cruzamentoCandidates : null
       );
-      const { layer, withCoords } = buildRegistrosLayer(filtered);
+      const { layer, withCoords } = buildRegistrosLayer(filtered, {
+        renderer: map ? rendererFor(map, 'registros') : null,
+      });
       registrosLayerGroup = layer;
 
       if (map && registrosVisible) {

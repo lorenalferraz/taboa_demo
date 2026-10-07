@@ -264,7 +264,7 @@ export function buildRegistrosBufferLayer(records, assentamentoFeatures, cruzame
  * @param {object[]} records - array de objetos vindos do CSV (chaves = cabeçalhos)
  * @returns {{ layer: L.LayerGroup, total: number, withCoords: number }}
  */
-export function buildRegistrosLayer(records) {
+export function buildRegistrosLayer(records, opts = {}) {
   const markers = [];
   let withCoords = 0;
 
@@ -285,6 +285,8 @@ export function buildRegistrosLayer(records) {
       fillOpacity: 0.85,
       color: '#fff',
       weight: 1.5,
+      interactive: true,
+      renderer: opts.renderer || undefined,
     }).bindPopup(buildPopup(rec), { maxWidth: 300 });
 
     markers.push(marker);

@@ -33,7 +33,8 @@ export const ALERT_STYLE = {
   weight: 2,
   opacity: 1,
   fillColor: '#ef4444',
-  fillOpacity: 0,
+  fillOpacity: 0.12,
+  interactive: true,
 };
 /** Malha municipal: linha branca acinzentada, fina; fill quase invisível só para o clique do popup. */
 export const MUNICIPIOS_STYLE = {

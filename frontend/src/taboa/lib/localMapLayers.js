@@ -7,6 +7,7 @@ import { INCRA_LOCAL_LAYERS } from './localIncraCatalog.js';
 import { SHAPE_OVERLAY_LAYERS } from './localShapeLayers.js';
 import { BY_NOME, normMunNome } from './faixaMunicipiosCatalog.js';
 import { buildAssentamentoPopupHtml } from './assentamentoMeta.js';
+import { rendererFor } from './layerOrder.js';
 import * as turf from '@turf/turf';
 
 /** @typedef {{ layer: L.Layer, id: string }} RemoteWmsEntry */
@@ -363,6 +364,8 @@ function createIncraAssentamentosLeafletLayer(gj) {
   incraAssentamentoLeaflets = [];
   return L.geoJSON(gj, {
     style: hidden,
+    interactive: true,
+    renderer: hostMap ? rendererFor(hostMap, 'assentamentos') : undefined,
     onEachFeature: (feat, layer) => {
       const idx = gj.features.indexOf(feat);
       const i = Number.isInteger(feat?.__srcIdx)
@@ -581,8 +584,9 @@ async function refreshViewportLayer(cfg) {
   let entry = remoteWmsEntries.find((e) => e.id === id);
   if (!entry) {
     const lyr = L.geoJSON(gj || { type: 'FeatureCollection', features: [] }, {
-      renderer: L.canvas({ padding: 0.5 }),
-      style: leafletStyle(cfg.style),
+      renderer: hostMap ? rendererFor(hostMap, cfg.id) : undefined,
+      style: () => ({ ...leafletStyle(cfg.style), interactive: true }),
+      interactive: true,
       onEachFeature: (feat, layer) => {
         bindFeaturePopup(layer, cfg.buildPopup(feat?.properties || {}, escHtml));
       },
@@ -630,6 +634,8 @@ async function attachLocalGeojsonLayer(group, next, cfg, buildPopup) {
     if (!gj?.features?.length) return;
     const style = cfg.style || {};
     const lyr = L.geoJSON(gj, {
+      interactive: true,
+      renderer: hostMap ? rendererFor(hostMap, cfg.id) : undefined,
       style: {
         color: style.color || '#334155',
         weight: style.weight ?? 1.2,
