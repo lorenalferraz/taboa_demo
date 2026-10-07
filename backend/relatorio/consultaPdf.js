@@ -575,34 +575,15 @@ function drawCrossingCards(doc, y, cruzamentos) {
   return y;
 }
 
-function drawTamanhoPropriedade(doc, y, imoveis, informadoHa) {
+function valorTamanhoPropriedade(imoveis, informadoHa) {
   const ha = Number(informadoHa);
-  let value = '—';
-  if (Number.isFinite(ha) && ha > 0) {
-    value = formatHa(ha);
-  } else {
-    const partes = [];
-    for (const im of imoveis || []) {
-      if (!(im.areaHa > 0)) continue;
-      partes.push(formatHa(im.areaHa));
-    }
-    value = [...new Set(partes)].join(' · ') || '—';
+  if (Number.isFinite(ha) && ha > 0) return formatHa(ha);
+  const partes = [];
+  for (const im of imoveis || []) {
+    if (!(im.areaHa > 0)) continue;
+    partes.push(formatHa(im.areaHa));
   }
-  const label = 'Tamanho da propriedade';
-  const w = 168;
-  const inner = w - CELL_PAD_X * 2;
-  const rowH = 28;
-  y = ensureSpace(doc, y, rowH + 4);
-  doc.save();
-  doc.fillColor(CELL_BG).strokeColor(CELL_EDGE).lineWidth(0.4);
-  doc.roundedRect(MARGIN, y, w, rowH, 2).fillAndStroke();
-  doc.restore();
-  doc.fillColor(TEXT).font(doc._sansBold).fontSize(6)
-    .text(label, MARGIN + CELL_PAD_X, y + 4, { width: inner, lineBreak: false });
-  doc.fillColor(TEXT).font(doc._sans).fontSize(8)
-    .text(value, MARGIN + CELL_PAD_X, y + 14, { width: inner, lineBreak: false });
-  syncCursor(doc, y + rowH + CELL_GAP);
-  return y + rowH + CELL_GAP + 2;
+  return [...new Set(partes)].join(' · ') || '—';
 }
 
 function linhasImoveisCadastrais(imoveis) {
@@ -968,11 +949,14 @@ async function buildConsultaPdf(raw = {}) {
       { label: 'Município / UF', value: payload.mun },
       { label: 'Área de análise', value: payload.areaHa },
     ];
+    if (payload.propriedadeHa > 0 || payload.showBuffer || (imoveisCadastro || []).some((im) => im.areaHa > 0)) {
+      cadastro.push({
+        label: 'Tamanho da propriedade',
+        value: valorTamanhoPropriedade(imoveisCadastro, payload.propriedadeHa),
+      });
+    }
     cadastro.push(...linhasImoveisCadastrais(imoveisCadastro));
     y = drawInfoTable(doc, y, cadastro);
-    if (payload.propriedadeHa > 0 || payload.showBuffer || (imoveisCadastro || []).some((im) => im.areaHa > 0)) {
-      y = drawTamanhoPropriedade(doc, y, imoveisCadastro, payload.propriedadeHa);
-    }
 
     y = drawSectionTitle(doc, y, 'RESULTADO ANALÍTICO DA CONSULTA');
     const alerts = payload.alerts || [];

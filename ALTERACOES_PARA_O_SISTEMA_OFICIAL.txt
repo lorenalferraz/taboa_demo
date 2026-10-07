@@ -219,6 +219,25 @@ Como conferir
   cada uma fica numa linha, sob o título cinza mais escuro.
 
 
+8. Célula de tamanho da propriedade — 07/10/2026
+-----------------------------------------------
+
+Problema
+  A caixa "Tamanho da propriedade" era menor e ficava solta, fora da
+  grade das informações cadastrais.
+
+O que passou a valer
+  O tamanho da propriedade entra como uma célula da mesma tabela, com a
+  mesma largura, altura, borda e tipografia das células ao lado.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  No laudo, "Tamanho da propriedade" fica alinhada com "Área de análise"
+  e "Propriedade", no mesmo tamanho de célula.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
