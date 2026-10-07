@@ -6,7 +6,7 @@ const path = require('path');
 require('./pdfkitFonts');
 const PDFDocument = require('pdfkit');
 const { renderSatelliteMap } = require('./mapaSatelite');
-const { cruzarAreaConsulta, identificarMunicipios, identificarImoveisCadastrais, identificarRlAppDoImovel } = require('./cruzamentos');
+const { cruzarAreaConsulta, cruzarProdes, identificarMunicipios, identificarImoveisCadastrais, identificarRlAppDoImovel } = require('./cruzamentos');
 
 const NAVY = '#002848';
 const GOLD = '#e08818';
@@ -622,6 +622,25 @@ function geometriaCadastral(raw, prepared) {
   return prepared.coord !== '—' ? prepared.coord : prepared.origem;
 }
 
+function drawProdesTable(doc, y, itens) {
+  const rows = (Array.isArray(itens) ? itens : []).slice(0, 40);
+  if (!rows.length) return y;
+  const title = rows.length === 1
+    ? 'Desmatamento PRODES sobreposto'
+    : 'Desmatamentos PRODES sobrepostos';
+  return drawLabeledTable(doc, y, title, [
+    { label: 'Ano', w: 48 },
+    { label: 'Imagem', w: 92 },
+    { label: 'Sobreposição', w: 92 },
+    { label: '% de Sobreposição' },
+  ], rows.map((row) => [
+    txt(row.year),
+    txt(row.imageDate),
+    formatHa(row.overlapHa),
+    formatPct(row.pct),
+  ]));
+}
+
 function drawAlertLaudo(doc, y, alert, mun, index, total) {
   const title = total > 1 ? `LAUDO DO ALERTA (${index} de ${total})` : 'LAUDO DO ALERTA';
   y = drawSectionTitle(doc, y, title);
@@ -840,12 +859,19 @@ async function buildConsultaPdf(raw = {}) {
   const generatedAt = payload.generatedAt;
   let mapImg = null;
   let cruzamentos = [];
+  let prodesCruzamento = { hit: false, count: 0, areaHa: 0, pct: 0, itens: [], erro: false };
   let municipiosShape = [];
   let imoveisCadastro = [];
   try {
     cruzamentos = await cruzarAreaConsulta(payload.aoi);
   } catch (e) {
     console.error('Falha nos cruzamentos do laudo:', e.message || e);
+  }
+  try {
+    prodesCruzamento = await cruzarProdes(payload.aoi);
+  } catch (e) {
+    prodesCruzamento = { ...prodesCruzamento, erro: true };
+    console.error('Falha no cruzamento PRODES do laudo:', e.message || e);
   }
   const consultaPt = Array.isArray(payload.point) && payload.point.length >= 2
     ? payload.point
@@ -905,6 +931,13 @@ async function buildConsultaPdf(raw = {}) {
           fill: '#67e8f9',
           stroke: '#0e7490',
           geom: f.geometry,
+        })),
+        ...(prodesCruzamento.itens || []).slice(0, 12).map((it) => ({
+          id: 'prodes',
+          legend: 'PRODES',
+          fill: '#ef4444',
+          stroke: '#ef4444',
+          geom: it.geometry,
         })),
         ...cruzamentos.flatMap((c) => {
           if (!c.hit) return [];
@@ -980,6 +1013,25 @@ async function buildConsultaPdf(raw = {}) {
       alerts.forEach((alert, i) => {
         y = drawAlertLaudo(doc, y, alert, payload.mun, i + 1, alerts.length);
       });
+    }
+
+    y = drawSectionTitle(doc, y, 'CRUZAMENTO COM O PRODES');
+    if (prodesCruzamento.erro) {
+      y = drawInfoTable(doc, y, [
+        { label: 'Sobreposição com PRODES', value: 'Não foi possível consultar o PRODES.', fullWidth: true },
+      ]);
+    } else if (!prodesCruzamento.hit) {
+      y = drawInfoTable(doc, y, [
+        { label: 'Sobreposição com PRODES', value: 'Sobreposição não identificada com o PRODES desde 2020.', tone: 'ok', fullWidth: true },
+      ]);
+    } else {
+      y = drawInfoTable(doc, y, [
+        { label: 'Sobreposição com PRODES', value: 'Identificada' },
+        { label: 'Polígonos na área', value: String(prodesCruzamento.count) },
+        { label: 'Tamanho da sobreposição', value: formatHa(prodesCruzamento.areaHa) },
+        { label: 'Percentual sobreposto', value: formatPct(prodesCruzamento.pct) },
+      ]);
+      y = drawProdesTable(doc, y, prodesCruzamento.itens);
     }
 
     y = drawSectionTitle(doc, y, 'RESTRIÇÕES LEGAIS ANALISADAS');

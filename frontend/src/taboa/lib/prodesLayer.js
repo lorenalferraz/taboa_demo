@@ -1,7 +1,7 @@
 /**
  * PRODES de desmatamento anual (INPE / TerraBrasilis), bioma Mata Atlântica.
- * Os polígonos vêm ao vivo do WFS, em GeoJSON (EPSG:4674). Entram só os
- * desmates de 2020 em diante, recortados no contorno dos municípios.
+ * A tela pede a imagem ao vivo no WMS, só de 2020 em diante, recortada no
+ * contorno dos municípios. O clique consulta o polígono naquele ponto.
  * A cor é a mesma dos alertas do MapBiomas.
  */
 import L from 'leaflet';
@@ -11,18 +11,21 @@ import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
 import { applyLayerOrder, paneName } from './layerOrder.js';
 
+const WMS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/ows';
 const WFS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
-const TYPE_NAME = 'prodes-mata-atlantica-nb:yearly_deforestation';
-const PAGE = 8000;
+const LAYER = 'prodes-mata-atlantica-nb:yearly_deforestation';
 const MIN_YEAR = 2020;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
-let group = null;
-let canvas = null;
+let overlay = null;
+let svgImage = null;
+let clipPathEl = null;
 let coverage = null;
 let loading = null;
 let moveHandler = null;
 let reqSeq = 0;
-let loadedBounds = null;
+let loadedKey = '';
 let attributionOn = false;
 
 function unionFeatures(features) {
@@ -35,7 +38,8 @@ function unionFeatures(features) {
       if (next?.geometry) acc = next;
     } catch (_) {}
   }
-  return acc?.geometry ? acc : null;
+  if (!acc?.geometry) return null;
+  return turf.simplify(acc, { tolerance: 0.0008, highQuality: false });
 }
 
 async function municipioFeatures() {
@@ -78,7 +82,7 @@ async function ensureCoverage() {
 }
 
 function viewSlice(map) {
-  const view = map.getBounds().pad(0.05);
+  const view = map.getBounds().pad(0.08);
   const lim = coverage.bounds;
   const south = Math.max(view.getSouth(), lim.getSouth());
   const north = Math.min(view.getNorth(), lim.getNorth());
@@ -88,60 +92,178 @@ function viewSlice(map) {
   return L.latLngBounds([south, west], [north, east]);
 }
 
-function covers(bounds) {
-  if (!loadedBounds) return false;
-  return loadedBounds.contains(bounds.getNorthWest()) && loadedBounds.contains(bounds.getSouthEast());
+function sldBody() {
+  const fill = ALERT_STYLE.fillColor || '#ef4444';
+  const opacity = ALERT_STYLE.fillOpacity ?? 0.12;
+  const stroke = ALERT_STYLE.color || '#ef4444';
+  const weight = ALERT_STYLE.weight ?? 2;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0" xmlns="http://www.opengis.net/sld">
+  <NamedLayer>
+    <Name>${LAYER}</Name>
+    <UserStyle>
+      <FeatureTypeStyle>
+        <Rule>
+          <PolygonSymbolizer>
+            <Fill>
+              <CssParameter name="fill">${fill}</CssParameter>
+              <CssParameter name="fill-opacity">${opacity}</CssParameter>
+            </Fill>
+            <Stroke>
+              <CssParameter name="stroke">${stroke}</CssParameter>
+              <CssParameter name="stroke-width">${weight}</CssParameter>
+            </Stroke>
+          </PolygonSymbolizer>
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>`;
 }
 
-function featureUrl(bounds, count, startIndex) {
-  const cql = `year >= ${MIN_YEAR} AND BBOX(geom,${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()},'EPSG:4674')`;
+function wmsUrl(bounds, width, height) {
   const params = new URLSearchParams({
-    service: 'WFS',
-    version: '2.0.0',
-    request: 'GetFeature',
-    typeName: TYPE_NAME,
-    outputFormat: 'application/json',
-    srsName: 'EPSG:4674',
-    CQL_FILTER: cql,
-    count: String(count),
-    startIndex: String(startIndex),
+    service: 'WMS',
+    version: '1.1.1',
+    request: 'GetMap',
+    layers: LAYER,
+    format: 'image/png',
+    transparent: 'true',
+    srs: 'EPSG:4326',
+    width: String(width),
+    height: String(height),
+    bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`,
+    CQL_FILTER: `year >= ${MIN_YEAR}`,
+    sld_body: sldBody(),
   });
-  return `${WFS_URL}?${params}`;
+  return `${WMS_URL}?${params}`;
 }
 
-function clipToMunicipios(feat) {
-  const year = Number(feat?.properties?.year);
-  if (!Number.isFinite(year) || year < MIN_YEAR || !feat?.geometry) return null;
-  let hit;
-  try {
-    hit = turf.intersect(turf.featureCollection([feat, coverage.feature]));
-  } catch (_) {
-    return null;
-  }
-  if (!hit?.geometry) return null;
-  hit.properties = feat.properties;
-  return hit;
-}
-
-async function fetchGeoJson(url, seq) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);
-  try {
-    const resp = await fetch(url, { signal: ctrl.signal });
-    if (!resp.ok) throw new Error('Falha ao baixar o PRODES.');
-    const data = await resp.json();
-    if (seq !== reqSeq) return null;
-    if (data?.exceptions || data?.type === 'ExceptionReport') {
-      throw new Error('Falha ao baixar o PRODES.');
+function clipD(geom, bounds) {
+  const west = bounds.getWest();
+  const south = bounds.getSouth();
+  const east = bounds.getEast();
+  const north = bounds.getNorth();
+  const dx = east - west || 1;
+  const dy = north - south || 1;
+  const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+  const parts = [];
+  for (const poly of polys) {
+    for (const ring of poly) {
+      if (!ring?.length) continue;
+      const cmds = ring.map(([lng, lat], i) => {
+        const x = (lng - west) / dx;
+        const y = (north - lat) / dy;
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
+      });
+      cmds.push('Z');
+      parts.push(cmds.join(' '));
     }
-    return data;
-  } catch (err) {
-    if (seq !== reqSeq) return null;
-    if (err?.name === 'AbortError') throw new Error('O INPE demorou para responder o PRODES.');
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  return parts.join(' ');
+}
+
+function pixelSize(map, bounds) {
+  const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+  const se = map.latLngToContainerPoint(bounds.getSouthEast());
+  let width = Math.abs(se.x - nw.x);
+  let height = Math.abs(se.y - nw.y);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  width *= dpr;
+  height *= dpr;
+  const scale = Math.min(1, 1280 / Math.max(width, height, 1));
+  return {
+    width: Math.max(64, Math.round(width * scale)),
+    height: Math.max(64, Math.round(height * scale)),
+  };
+}
+
+function ensureOverlay(map) {
+  if (overlay) return overlay;
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('xmlns', SVG_NS);
+  svg.setAttribute('viewBox', '0 0 1 1');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const clip = document.createElementNS(SVG_NS, 'clipPath');
+  clip.setAttribute('id', 'taboa-prodes-clip');
+  clip.setAttribute('clipPathUnits', 'objectBoundingBox');
+  clipPathEl = document.createElementNS(SVG_NS, 'path');
+  clipPathEl.setAttribute('clip-rule', 'evenodd');
+  clip.appendChild(clipPathEl);
+  defs.appendChild(clip);
+  svgImage = document.createElementNS(SVG_NS, 'image');
+  svgImage.setAttribute('x', '0');
+  svgImage.setAttribute('y', '0');
+  svgImage.setAttribute('width', '1');
+  svgImage.setAttribute('height', '1');
+  svgImage.setAttribute('preserveAspectRatio', 'none');
+  svgImage.setAttribute('clip-path', 'url(#taboa-prodes-clip)');
+  svg.appendChild(defs);
+  svg.appendChild(svgImage);
+  if (!map.getPane(paneName('prodes'))) map.createPane(paneName('prodes'));
+  overlay = L.svgOverlay(svg, coverage.bounds, {
+    pane: paneName('prodes'),
+    opacity: 0,
+    interactive: true,
+    attribution: 'PRODES &copy; INPE / TerraBrasilis',
+  });
+  overlay.on('click', (ev) => {
+    if (ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
+    openAt(map, ev.latlng).catch(() => {});
+  });
+  return overlay;
+}
+
+function loadImage(url, seq) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => finish(new Error('O INPE demorou para responder o PRODES.')), 28000);
+    const finish = (err) => {
+      clearTimeout(timer);
+      svgImage.removeEventListener('load', onOk);
+      svgImage.removeEventListener('error', onErr);
+      if (seq !== reqSeq) resolve(false);
+      else if (err) reject(err);
+      else resolve(true);
+    };
+    const onOk = () => finish(null);
+    const onErr = () => finish(new Error('Falha ao baixar o PRODES.'));
+    svgImage.addEventListener('load', onOk);
+    svgImage.addEventListener('error', onErr);
+    svgImage.setAttribute('href', url);
+    svgImage.setAttributeNS(XLINK_NS, 'href', url);
+  });
+}
+
+async function refresh(map) {
+  const seq = ++reqSeq;
+  const bounds = viewSlice(map);
+  if (!bounds) {
+    overlay.setOpacity(0);
+    return true;
+  }
+  const key = [
+    map.getZoom(),
+    bounds.getWest().toFixed(3),
+    bounds.getSouth().toFixed(3),
+    bounds.getEast().toFixed(3),
+    bounds.getNorth().toFixed(3),
+  ].join(',');
+  if (key === loadedKey) return true;
+  const { width, height } = pixelSize(map, bounds);
+  overlay.setBounds(bounds);
+  clipPathEl.setAttribute('d', clipD(coverage.feature.geometry, bounds));
+  const el = overlay.getElement();
+  if (el) el.style.pointerEvents = 'auto';
+  const ok = await loadImage(wmsUrl(bounds, width, height), seq);
+  if (!ok || seq !== reqSeq) return false;
+  loadedKey = key;
+  overlay.setOpacity(1);
+  if (!attributionOn && map.attributionControl) {
+    map.attributionControl.addAttribution('PRODES &copy; INPE / TerraBrasilis');
+    attributionOn = true;
+  }
+  return true;
 }
 
 function esc(value) {
@@ -175,111 +297,90 @@ function popupHtml(props) {
   return `<div class="popup-title">Desmatamento ${esc(year)}</div>${body}`;
 }
 
-function showNote(text) {
-  const el = document.getElementById('status');
-  if (!el) return;
-  el.hidden = false;
-  el.className = 'status-pill';
-  el.textContent = text;
+function clickRadius() {
+  const el = overlay?.getElement();
+  const bounds = overlay?.getBounds?.();
+  if (!el || !bounds) return 0.003;
+  const rect = el.getBoundingClientRect();
+  const dLng = Math.abs(bounds.getEast() - bounds.getWest()) / Math.max(rect.width, 1);
+  const dLat = Math.abs(bounds.getNorth() - bounds.getSouth()) / Math.max(rect.height, 1);
+  return Math.max(0.003, Math.min(0.04, Math.max(dLng, dLat) * 2));
 }
 
-function hideNote() {
-  const el = document.getElementById('status');
-  if (!el) return;
-  if (String(el.textContent || '').startsWith('Carregando os polígonos do PRODES')) el.hidden = true;
-}
-
-function ensureGroup(map) {
-  if (!group) {
-    if (!map.getPane(paneName('prodes'))) map.createPane(paneName('prodes'));
-    canvas = L.canvas({ pane: paneName('prodes'), padding: 0.5 });
-    group = L.geoJSON({ type: 'FeatureCollection', features: [] }, {
-      pane: paneName('prodes'),
-      renderer: canvas,
-      interactive: true,
-      style: () => ({ ...ALERT_STYLE }),
-      onEachFeature(feat, lyr) {
-        lyr.bindPopup(popupHtml(feat?.properties || {}), { maxWidth: 360, autoPan: false });
-      },
-    });
-  }
-  if (!attributionOn && map.attributionControl) {
-    map.attributionControl.addAttribution('PRODES &copy; INPE / TerraBrasilis');
-    attributionOn = true;
-  }
-  return group;
-}
-
-function enableCanvasClick() {
-  const el = canvas?._container;
-  if (el) el.style.pointerEvents = 'auto';
-}
-
-async function loadBounds(bounds, seq) {
-  group.clearLayers();
-  const first = await fetchGeoJson(featureUrl(bounds, PAGE, 0), seq);
-  if (!first || seq !== reqSeq) return false;
-  const matched = Number(first.numberMatched ?? first.totalFeatures ?? first.features?.length ?? 0);
-  const pages = Math.max(1, Math.ceil(matched / PAGE));
-  let drawn = 0;
-
-  const addPage = async (data) => {
-    const features = (data?.features || []).map(clipToMunicipios).filter(Boolean);
-    if (seq !== reqSeq) return;
-    if (features.length) group.addData({ type: 'FeatureCollection', features });
-    drawn += features.length;
-    showNote(`Carregando os polígonos do PRODES… ${drawn.toLocaleString('pt-BR')}`);
-    enableCanvasClick();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  };
-
-  await addPage(first);
-  let next = 1;
-  async function worker() {
-    while (next < pages) {
-      const page = next;
-      next += 1;
-      if (seq !== reqSeq) return;
-      const data = await fetchGeoJson(featureUrl(bounds, PAGE, page * PAGE), seq);
-      if (!data || seq !== reqSeq) return;
-      await addPage(data);
+function pickHit(features, pt, radius) {
+  let nearest = null;
+  let nearestD = Infinity;
+  for (const feat of features) {
+    const year = Number(feat?.properties?.year);
+    if (!Number.isFinite(year) || year < MIN_YEAR || !feat?.geometry) continue;
+    try {
+      if (turf.booleanPointInPolygon(pt, feat)) return feat;
+    } catch (_) {}
+    const polys = feat.geometry.type === 'Polygon' ? [feat.geometry.coordinates] : feat.geometry.coordinates;
+    for (const poly of polys || []) {
+      for (const coord of poly?.[0] || []) {
+        const d = Math.hypot(coord[0] - pt[0], coord[1] - pt[1]);
+        if (d < nearestD) {
+          nearestD = d;
+          nearest = feat;
+        }
+      }
     }
   }
-  const workers = Math.min(3, Math.max(0, pages - 1));
-  if (workers) await Promise.all(Array.from({ length: workers }, () => worker()));
-  if (seq !== reqSeq) return false;
-  loadedBounds = bounds;
-  hideNote();
-  enableCanvasClick();
-  return true;
+  return nearest && nearestD <= radius ? nearest : null;
 }
 
-async function refresh(map) {
-  const seq = ++reqSeq;
-  const bounds = viewSlice(map);
-  if (!bounds) {
-    if (group) group.clearLayers();
-    loadedBounds = null;
-    hideNote();
-    return true;
+async function openAt(map, latlng) {
+  if (!latlng || !coverage?.feature) return;
+  const pt = [latlng.lng, latlng.lat];
+  try {
+    if (!turf.booleanPointInPolygon(pt, coverage.feature)) return;
+  } catch (_) {
+    return;
   }
-  if (covers(bounds) && group.getLayers().length) return true;
-  showNote('Carregando os polígonos do PRODES…');
-  return loadBounds(bounds, seq);
+  const d = clickRadius();
+  const cql = `year >= ${MIN_YEAR} AND BBOX(geom,${latlng.lng - d},${latlng.lat - d},${latlng.lng + d},${latlng.lat + d},'EPSG:4674')`;
+  const params = new URLSearchParams({
+    service: 'WFS',
+    version: '2.0.0',
+    request: 'GetFeature',
+    typeName: LAYER,
+    outputFormat: 'application/json',
+    srsName: 'EPSG:4674',
+    CQL_FILTER: cql,
+    count: '40',
+  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  let data;
+  try {
+    const resp = await fetch(`${WFS_URL}?${params}`, { signal: ctrl.signal });
+    if (!resp.ok) return;
+    data = await resp.json();
+  } catch (_) {
+    return;
+  } finally {
+    clearTimeout(timer);
+  }
+  const hit = pickHit(data?.features || [], pt, d);
+  if (!hit) return;
+  L.popup({ maxWidth: 360, autoPan: false })
+    .setLatLng(latlng)
+    .setContent(popupHtml(hit.properties || {}))
+    .openOn(map);
 }
 
 function detach(map) {
   reqSeq += 1;
-  loadedBounds = null;
-  hideNote();
+  loadedKey = '';
   if (moveHandler) {
     map.off('moveend', moveHandler);
     moveHandler = null;
   }
-  if (group && map.hasLayer(group)) {
-    try { map.removeLayer(group); } catch (_) {}
+  if (overlay && map.hasLayer(overlay)) {
+    try { map.removeLayer(overlay); } catch (_) {}
   }
-  if (group) group.clearLayers();
+  if (overlay) overlay.setOpacity(0);
 }
 
 export async function setProdesVisible(map, visible) {
@@ -289,9 +390,11 @@ export async function setProdesVisible(map, visible) {
     return;
   }
   await ensureCoverage();
-  ensureGroup(map);
+  ensureOverlay(map);
   applyLayerOrder(map);
-  if (!map.hasLayer(group)) group.addTo(map);
+  if (!map.hasLayer(overlay)) overlay.addTo(map);
+  const el = overlay.getElement();
+  if (el) el.style.pointerEvents = 'auto';
   if (!moveHandler) {
     moveHandler = () => {
       refresh(map).catch(() => {});
@@ -302,13 +405,12 @@ export async function setProdesVisible(map, visible) {
   try {
     const shown = await refresh(map);
     applyLayerOrder(map);
-    enableCanvasClick();
-    if (!shown && !loadedBounds && reqSeq === before + 1) {
+    if (!shown && !loadedKey && reqSeq === before + 1) {
       detach(map);
       throw new Error('Falha ao baixar o PRODES.');
     }
   } catch (err) {
-    if (!loadedBounds) detach(map);
+    if (!loadedKey) detach(map);
     throw err;
   }
 }

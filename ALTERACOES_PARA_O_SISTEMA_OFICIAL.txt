@@ -584,6 +584,36 @@ Como conferir
   espalhar no retângulo em volta. No popup, o ano é 2020 ou posterior.
 
 
+24. PRODES rápido na tela e no cruzamento do relatório — 07/10/2026
+-------------------------------------------------------------------
+
+O que passou a valer
+  A camada PRODES volta a ser a imagem ao vivo do INPE, que abre sem
+  baixar todos os polígonos. Continua só o desmatamento de 2020 em
+  diante, recortado no contorno dos municípios, na cor dos alertas do
+  MapBiomas. O clique consulta só o polígono daquele ponto.
+  O relatório passa a cruzar a área de análise com o PRODES do mesmo
+  jeito que cruza com o MapBiomas: informa se houve sobreposição, a
+  quantidade, o tamanho, o percentual e a lista dos polígonos. Esses
+  polígonos também entram no mapa do PDF.
+
+Por quê
+  Trazer todos os polígonos para o navegador atrasava a camada e o
+  clique. O cruzamento do laudo ainda não incluía o PRODES.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+  - backend/relatorio/cruzamentos.js
+  - backend/relatorio/consultaPdf.js
+  - backend/server.js
+
+Como conferir
+  Ligar PRODES na vista inicial: a imagem vermelha aparece em poucos
+  segundos, só sobre os municípios. Clicar numa mancha abre o ano
+  (2020 ou depois). Gerar um relatório de uma área com desmate: a
+  seção Cruzamento com o PRODES lista a sobreposição.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

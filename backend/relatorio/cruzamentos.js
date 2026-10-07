@@ -840,7 +840,116 @@ async function identificarRlAppDoImovel(imoveis) {
   return { rl, app };
 }
 
+const PRODES_WFS = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
+const PRODES_LAYER = 'prodes-mata-atlantica-nb:yearly_deforestation';
+const PRODES_MIN_YEAR = 2020;
+
+async function fetchProdesInBbox(bbox) {
+  const [west, south, east, north] = bbox;
+  const features = [];
+  const page = 1000;
+  for (let start = 0; start < 4000; start += page) {
+    const cql = `year >= ${PRODES_MIN_YEAR} AND BBOX(geom,${west},${south},${east},${north},'EPSG:4674')`;
+    const params = new URLSearchParams({
+      service: 'WFS',
+      version: '2.0.0',
+      request: 'GetFeature',
+      typeName: PRODES_LAYER,
+      outputFormat: 'application/json',
+      srsName: 'EPSG:4674',
+      CQL_FILTER: cql,
+      count: String(page),
+      startIndex: String(start),
+    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25000);
+    let data;
+    try {
+      const resp = await fetch(`${PRODES_WFS}?${params}`, { signal: ctrl.signal });
+      if (!resp.ok) throw new Error('Falha ao consultar o PRODES.');
+      data = await resp.json();
+    } finally {
+      clearTimeout(timer);
+    }
+    const batch = data?.features || [];
+    features.push(...batch);
+    const matched = Number(data?.numberMatched ?? data?.totalFeatures ?? batch.length);
+    if (!batch.length || features.length >= matched || batch.length < page) break;
+  }
+  return features;
+}
+
+function prodesDentroDeMunicipio(feat, municipios) {
+  for (const mun of municipios) {
+    let fb = null;
+    try { fb = geomBbox(mun); } catch (_) { fb = null; }
+    let tb = null;
+    try { tb = geomBbox(feat); } catch (_) { tb = null; }
+    if (fb && tb && !bboxesOverlap(fb, tb)) continue;
+    try {
+      if (geometriesIntersect(feat, mun)) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+/**
+ * Desmatamento PRODES de 2020 em diante, só dentro dos municípios,
+ * que cruza a área de análise.
+ */
+async function cruzarProdes(aoiGeom) {
+  const empty = { hit: false, count: 0, areaHa: 0, pct: 0, itens: [] };
+  const aoiFeat = asFeature(aoiGeom);
+  if (!aoiFeat?.geometry) return empty;
+  let aoiBbox = null;
+  try { aoiBbox = geomBbox(aoiFeat); } catch (_) { return empty; }
+  if (!aoiBbox) return empty;
+  let munFc = { features: [] };
+  try { munFc = await loadMunicipiosWgs84(); } catch (_) {}
+  const municipios = (munFc.features || []).filter((f) => {
+    if (!f?.geometry) return false;
+    let fb = null;
+    try { fb = geomBbox(f); } catch (_) { return false; }
+    return fb && bboxesOverlap(fb, aoiBbox);
+  });
+  const features = await fetchProdesInBbox(aoiBbox);
+  const aoiHa = geomAreaHa(aoiFeat);
+  const itens = [];
+  for (const feat of features) {
+    const year = Number(feat?.properties?.year);
+    if (!Number.isFinite(year) || year < PRODES_MIN_YEAR || !feat?.geometry) continue;
+    if (municipios.length && !prodesDentroDeMunicipio(feat, municipios)) continue;
+    try {
+      if (!geometriesIntersect(aoiFeat, feat)) continue;
+    } catch (_) {
+      continue;
+    }
+    const overlapHa = clipAreaHa(aoiFeat, feat);
+    if (!(overlapHa > 0)) continue;
+    const km = Number(feat.properties?.area_km);
+    itens.push({
+      year,
+      imageDate: feat.properties?.image_date || '',
+      classe: feat.properties?.main_class || 'DESMATAMENTO',
+      areaHa: Number.isFinite(km) ? km * 100 : geomAreaHa(feat),
+      overlapHa,
+      pct: aoiHa > 0 ? Math.min(100, (overlapHa / aoiHa) * 100) : 0,
+      geometry: compactGeom(feat.geometry),
+    });
+  }
+  itens.sort((a, b) => (b.overlapHa || 0) - (a.overlapHa || 0));
+  const areaHa = itens.reduce((sum, it) => sum + (it.overlapHa || 0), 0);
+  return {
+    hit: itens.length > 0,
+    count: itens.length,
+    areaHa,
+    pct: aoiHa > 0 ? Math.min(100, (areaHa / aoiHa) * 100) : 0,
+    itens,
+  };
+}
+
 exports.cruzarAreaConsulta = cruzarAreaConsulta;
+exports.cruzarProdes = cruzarProdes;
 exports.identificarMunicipios = identificarMunicipios;
 exports.identificarImoveisCadastrais = identificarImoveisCadastrais;
 exports.identificarRlAppDoImovel = identificarRlAppDoImovel;
