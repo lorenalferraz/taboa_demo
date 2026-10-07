@@ -2745,8 +2745,8 @@ export function bootstrapTaboa() {
 
     function _openComboboxElements(ul, input, allItems) {
       if (!ul || !input) return;
-      const q = input.value.trim().toLowerCase();
-      const filtered = q ? allItems.filter((v) => v.toLowerCase().includes(q)) : allItems;
+      const q = foldFilterText(input.value);
+      const filtered = q ? allItems.filter((v) => foldFilterText(v).startsWith(q)) : allItems;
       _renderComboboxList(ul, filtered, (val) => {
         input.value = val;
         input.dispatchEvent(new Event('input', { bubbles: true }));

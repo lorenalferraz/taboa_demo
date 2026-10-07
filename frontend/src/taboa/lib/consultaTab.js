@@ -1006,6 +1006,11 @@ export function setupConsultaTab(ctx) {
       return (munIn?.value || '').trim();
     }
 
+    function isCarQuery(q) {
+      const compact = String(q || '').replace(/[^a-zA-Z0-9]/g, '');
+      return compact.length >= 4 && /\d/.test(compact);
+    }
+
     async function applyImovel(item) {
       if (!item) return;
       input.value = item.label || item.car || '';
@@ -1061,7 +1066,7 @@ export function setupConsultaTab(ctx) {
       if (!base) return;
       const my = ++seq;
       const params = new URLSearchParams({ q, limit: '40' });
-      if (mun) params.set('municipio', mun);
+      if (mun && !isCarQuery(q)) params.set('municipio', mun);
       try {
         const res = await fetch(`${String(base).replace(/\/$/, '')}/api/shape/imoveis?${params}`, { cache: 'no-store' });
         const data = await res.json().catch(() => null);
@@ -1112,6 +1117,10 @@ export function setupConsultaTab(ctx) {
           updateGeomStatus();
         }
         if (typeof onImovelCleared === 'function') onImovelCleared();
+      }
+      if (!ul.hidden) {
+        clearTimeout(timer);
+        timer = setTimeout(() => refresh(true), 180);
       }
     });
   }

@@ -336,6 +336,40 @@ Como conferir
   de alerta repete a cor do polígono no mapa.
 
 
+13. Busca de CAR, filtro de município e número da página — 07/10/2026
+--------------------------------------------------------------------
+
+Problema
+  O CAR BA-2912707-01CA80B3E91C483E89A12766C5352435 não aparecia na
+  busca. No cadastro ele está com pontos:
+  BA-2912707-01CA.80B3.E91C.483E.89A1.2766.C535.2435 (Sítio Boa Vista,
+  Ibirapitanga). O número da página ficava à direita, acima da nota.
+
+O que passou a valer
+  - A busca do CAR ignora pontos, traços e espaços. O código acima é
+    encontrado com ou sem a pontuação.
+  - Digitar um CAR busca em todos os municípios, mesmo que um município
+    já esteja no filtro.
+  - Com município preenchido e sem um código de CAR, a lista de CAR
+    mostra só imóveis de municípios que começam com o texto digitado.
+  - Nos dois campos, a lista acompanha o que é digitado. "Ibira" lista
+    os municípios que começam com esse nome.
+  - O número da página fica centralizado, abaixo da nota de rodapé.
+
+Arquivos
+  - backend/localShapeLoader.js
+  - backend/shape-runtime.txt
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/bootstrap.js
+  - backend/relatorio/consultaPdf.js
+
+Como conferir
+  Digitar o CAR sem pontos e ver Sítio Boa Vista. Digitar "Ibira" no
+  município e ver Ibirapitanga e Ibirataia. Com o município preenchido,
+  abrir o CAR e conferir só imóveis daquele município. No PDF, a página
+  fica no centro, embaixo da nota.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

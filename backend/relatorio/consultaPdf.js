@@ -27,7 +27,17 @@ const MARGIN = 42;
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const PAGE_LIMIT = PAGE_H - 78;
+function footerLayout(doc) {
+  const notes = Array.isArray(doc?._taboaFonteNotas) ? doc._taboaFonteNotas : [];
+  const bottom = 14;
+  const pageH = 11;
+  const noteStep = 8;
+  const notesH = notes.length ? notes.length * noteStep + 4 : 0;
+  const yPage = PAGE_H - bottom - pageH;
+  const yNotes = yPage - notesH;
+  const yLine = (notes.length ? yNotes : yPage) - 8;
+  return { notes, yPage, yNotes, yLine, contentLimit: yLine - 12 };
+}
 const W_NOME_PROPRIEDADE = 132;
 
 const FONT_REGULAR_CANDIDATES = [
@@ -232,29 +242,27 @@ function drawHeader(doc, generatedAt) {
 }
 
 function drawFooter(doc) {
-  const notes = doc._taboaFonteNotas || [];
-  const noteH = notes.length ? 4 + notes.length * 8 : 0;
-  const y = PAGE_H - 26 - noteH;
-  doc.moveTo(MARGIN, y - 8).lineTo(PAGE_W - MARGIN, y - 8)
+  const { notes, yPage, yNotes, yLine } = footerLayout(doc);
+  doc.moveTo(MARGIN, yLine).lineTo(PAGE_W - MARGIN, yLine)
     .strokeColor(LINE).lineWidth(0.6).stroke();
-  doc.fillColor(MUTED).font(doc._sans).fontSize(7.5)
-    .text(`Página ${doc._taboaPage || 1}`, MARGIN, y, { width: CONTENT_W, align: 'right', lineBreak: false });
   notes.forEach((n, i) => {
     doc.font(doc._sans).fontSize(6.4).fillColor(MUTED)
-      .text(`* ${n.sigla} — ${n.texto} ${n.url}`, MARGIN, y + 12 + i * 8, {
+      .text(`* ${n.sigla} — ${n.texto} ${n.url}`, MARGIN, yNotes + i * 8, {
         width: CONTENT_W,
         lineBreak: false,
       });
   });
+  doc.fillColor(MUTED).font(doc._sans).fontSize(7.5)
+    .text(`Página ${doc._taboaPage || 1}`, MARGIN, yPage, { width: CONTENT_W, align: 'center', lineBreak: false });
 }
 
 function syncCursor(doc, y) {
   doc.x = MARGIN;
-  doc.y = Math.min(Math.max(0, y), PAGE_LIMIT - 8);
+  doc.y = Math.min(Math.max(0, y), footerLayout(doc).contentLimit - 8);
 }
 
 function ensureSpace(doc, y, need) {
-  if (y + need <= PAGE_LIMIT) {
+  if (y + need <= footerLayout(doc).contentLimit) {
     syncCursor(doc, y);
     return y;
   }
@@ -784,10 +792,11 @@ function drawMapa(doc, y, mapImg) {
     const gap = 6;
     const legendH = (mapImg.legend || []).length ? 18 : 0;
     const blockH = titleH + bandTop + imgH + bandBottom + legendH + gap;
-    if (y + blockH > PAGE_LIMIT) {
+    const contentLimit = footerLayout(doc).contentLimit;
+    if (y + blockH > contentLimit) {
       y = ensureSpace(doc, y, blockH);
     }
-    const avail = PAGE_LIMIT - y - titleH - bandTop - bandBottom - legendH - gap;
+    const avail = contentLimit - y - titleH - bandTop - bandBottom - legendH - gap;
     if (imgH > avail) {
       const scale = Math.max(avail, 140) / imgH;
       imgH *= scale;

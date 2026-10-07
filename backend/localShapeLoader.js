@@ -486,6 +486,10 @@ function foldSearch(s) {
     .trim();
 }
 
+function compactSearch(s) {
+  return foldSearch(s).replace(/[^a-z0-9]/g, '');
+}
+
 /** @type {object[] | null} */
 let _imoveisCatalog = null;
 /** @type {Promise<object[]> | null} */
@@ -577,15 +581,27 @@ async function ensureImoveisCatalog() {
 async function searchImoveisRurais({ q = '', municipio = '', limit = 40 } = {}) {
   const items = await ensureImoveisCatalog();
   const query = foldSearch(q);
+  const queryCompact = compactSearch(q);
   const munFold = foldSearch(municipio);
   const cap = Math.min(80, Math.max(1, Number(limit) || 40));
   const matched = [];
   for (const it of items) {
-    if (munFold && it.munFold && !it.munFold.includes(munFold)) continue;
-    if (query && !(it.search.includes(query) || foldSearch(it.car).includes(query))) continue;
+    if (munFold && !foldSearch(it.mun).startsWith(munFold)) continue;
+    const carCompact = compactSearch(it.car);
+    const nameHit = query && it.search.includes(query);
+    const carHit = queryCompact.length >= 2 && carCompact.includes(queryCompact);
+    if (query && !nameHit && !carHit) continue;
     matched.push(it);
   }
-  matched.sort((a, b) => String(a.nome || a.car).localeCompare(String(b.nome || b.car), 'pt-BR')
+  const rank = (it) => {
+    const car = compactSearch(it.car);
+    if (queryCompact && car === queryCompact) return 0;
+    if (queryCompact && car.startsWith(queryCompact)) return 1;
+    if (queryCompact && car.includes(queryCompact)) return 2;
+    return 3;
+  };
+  matched.sort((a, b) => rank(a) - rank(b)
+    || String(a.nome || a.car).localeCompare(String(b.nome || b.car), 'pt-BR')
     || String(a.car).localeCompare(String(b.car), 'pt-BR'));
   const out = matched.slice(0, cap).map((it) => ({
     i: it.i,
