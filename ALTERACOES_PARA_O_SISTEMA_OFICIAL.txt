@@ -436,6 +436,27 @@ Como conferir
   No topo do PDF, a logo e o título aparecem sem a caixa em volta.
 
 
+18. Camada PRODES só na área dos municípios — 07/10/2026
+--------------------------------------------------------
+
+O que passou a valer
+  A aba Camadas tem a base PRODES Brasil, do INPE (TerraBrasilis).
+  Ela só é desenhada dentro do contorno dos municípios da faixa.
+  Fora dessa área o mapa continua com a imagem de satélite.
+  A camada começa desligada.
+
+Arquivos
+  - frontend/src/App.jsx
+  - frontend/src/taboa/lib/prodesLayer.js
+  - frontend/src/taboa/lib/layerOrder.js
+  - frontend/src/taboa/lib/ibgeMunicipios.js
+  - frontend/src/taboa/bootstrap.js
+
+Como conferir
+  Em Camadas, ligar PRODES. O mapa colorido do INPE aparece só sobre
+  os municípios da faixa. No restante da tela segue o satélite.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

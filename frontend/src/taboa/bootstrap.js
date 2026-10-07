@@ -61,6 +61,7 @@ import {
 } from './lib/periodFilter.js';
 import { setupMapPopupPlacement } from './lib/popupPlacement.js';
 import { applyLayerOrder, bindLayerList, rendererFor } from './lib/layerOrder.js';
+import { setProdesVisible } from './lib/prodesLayer.js';
 import {
   buildRegistrosLayer,
   buildRegistrosBufferLayer,
@@ -1326,6 +1327,7 @@ export function bootstrapTaboa() {
       syncLayerCheckboxesToDefault();
       toggleShapeLayer(false);
       toggleMapBiomasLayer(true);
+      setProdesVisible(map, false).catch(() => {});
       resetMapViewToDefault();
       setStatus('Filtros e mapa restaurados ao padrão.');
 
@@ -2690,6 +2692,13 @@ export function bootstrapTaboa() {
 
     document.getElementById('chkIncraAssentamentos')?.addEventListener('change', function () {
       setRemoteLayerVisible('local:assentamentos', this.checked, this.checked ? { showAll: true } : undefined);
+    });
+    document.getElementById('chkProdes')?.addEventListener('change', function () {
+      const on = this.checked;
+      setProdesVisible(map, on).catch((e) => {
+        this.checked = false;
+        setStatus('Não foi possível carregar o PRODES: ' + (e.message || e), true);
+      });
     });
     for (const cfg of SHAPE_OVERLAY_LAYERS) {
       const inp = document.getElementById(cfg.checkboxId);

@@ -424,6 +424,21 @@ export default function App() {
                         </span>
                       </label>
                     </li>
+                    <li className="layer-row-item">
+                      <label className="layer-row">
+                        <span
+                          className="toggle-switch"
+                          style={{ '--layer-color': '#65a30d', '--layer-color-soft': '#bef264' }}
+                        >
+                          <input type="checkbox" id="chkProdes" aria-label="PRODES. Fonte: INPE" />
+                          <span className="toggle-switch-slider" aria-hidden="true" />
+                        </span>
+                        <span className="layer-row-text">
+                          <span className="layer-row-title">PRODES</span>
+                          <span className="layer-row-source">Fonte: INPE</span>
+                        </span>
+                      </label>
+                    </li>
                   </ul>
                 </div>
 

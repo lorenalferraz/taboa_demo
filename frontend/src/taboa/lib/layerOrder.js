@@ -16,6 +16,7 @@ const CHECKBOX_TO_LAYER = {
   chkIcmbioUcFederais: 'uc_federais',
   chkInemaUcEstaduais: 'uc_estaduais',
   chkInemaUcMunicipais: 'uc_municipais',
+  chkProdes: 'prodes',
 };
 
 /** De cima para baixo na lista e no mapa. */
@@ -31,6 +32,7 @@ const DEFAULT_TOP_FIRST = [
   'uc_estaduais',
   'uc_federais',
   'municipios',
+  'prodes',
 ];
 
 const FIXED_Z = {

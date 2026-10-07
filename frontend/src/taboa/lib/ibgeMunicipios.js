@@ -42,6 +42,11 @@ export async function loadIbgeMunicipios() {
   return _all;
 }
 
+/** Feições carregadas de `municipios.geojson`, já na área da faixa. */
+export function getMunicipioFeatures() {
+  return [..._featByNome.values()];
+}
+
 /** Feição de `municipios.geojson` pelo nome (match sem acento). */
 export function findMunicipioFeature(nome) {
   const n = normMunNome(nome);
