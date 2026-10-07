@@ -614,6 +614,34 @@ Como conferir
   seção Cruzamento com o PRODES lista a sobreposição.
 
 
+25. PRODES de 2025 visível no mapa — 07/10/2026
+------------------------------------------------
+
+O que passou a valer
+  A imagem do PRODES no mapa passa a mostrar todos os anos de 2020 em
+  diante, inclusive 2025, em qualquer zoom. O pedido ao INPE leva o
+  parâmetro TIME=2020-01-01/2100-01-01. O cruzamento do relatório não
+  muda: continua contando todo desmatamento de 2020 em diante que cai
+  dentro da área de análise.
+
+Por quê
+  A camada do INPE tem um filtro de tempo que, quando não é informado,
+  vai só até 2024. A imagem escondia os 2.419 polígonos de 2025 da
+  faixa, enquanto o relatório (que consulta o WFS) os encontrava. Na
+  propriedade do CAR BA-2932705-6FE1.8D83.AF20.45F2.BB07.532F.E862.5E81
+  o laudo achava três polígonos dentro do raio, um de 2022 e dois de
+  2025, e o mapa mostrava só o de 2022. Os polígonos fora do círculo
+  não entram na conta.
+
+Arquivos
+  - frontend/src/taboa/lib/prodesLayer.js
+
+Como conferir
+  Ligar o PRODES e ir até essa propriedade. Dentro do raio aparecem
+  três manchas vermelhas, não uma. Clicar numa das manchas do leste
+  abre o ano 2025.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

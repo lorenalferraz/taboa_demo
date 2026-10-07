@@ -134,6 +134,8 @@ function wmsUrl(bounds, width, height) {
     height: String(height),
     bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`,
     CQL_FILTER: `year >= ${MIN_YEAR}`,
+    // Sem TIME o INPE corta a imagem no fim de 2024 e esconde os anos novos.
+    TIME: `${MIN_YEAR}-01-01/2100-01-01`,
     sld_body: sldBody(),
   });
   return `${WMS_URL}?${params}`;
