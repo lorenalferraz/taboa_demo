@@ -10,6 +10,7 @@ import { PRODES_STYLE } from './constants.js';
 import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { getMunicipioFeatures, loadIbgeMunicipios } from './ibgeMunicipios.js';
 import { applyLayerOrder, paneName } from './layerOrder.js';
+import { openStackedPopup, registerPopupSource } from './stackedPopup.js';
 
 const WMS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/ows';
 const WFS_URL = 'https://terrabrasilis.dpi.inpe.br/geoserver/prodes-mata-atlantica-nb/wfs';
@@ -220,7 +221,12 @@ function ensureOverlay(map) {
   });
   overlay.on('click', (ev) => {
     if (ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
-    openAt(map, ev.latlng).catch(() => {});
+    openStackedPopup(map, ev.latlng);
+  });
+  registerPopupSource({
+    active: () => map.hasLayer(overlay),
+    z: () => Number(map.getPane(paneName('prodes'))?.style?.zIndex) || 450,
+    html: (latlng) => popupAt(latlng),
   });
   return overlay;
 }
@@ -340,13 +346,13 @@ function pickHit(features, pt, radius) {
   return nearest && nearestD <= radius ? nearest : null;
 }
 
-async function openAt(map, latlng) {
-  if (!latlng || !coverage?.feature) return;
+async function popupAt(latlng) {
+  if (!latlng || !coverage?.feature) return null;
   const pt = [latlng.lng, latlng.lat];
   try {
-    if (!turf.booleanPointInPolygon(pt, coverage.feature)) return;
+    if (!turf.booleanPointInPolygon(pt, coverage.feature)) return null;
   } catch (_) {
-    return;
+    return null;
   }
   const d = clickRadius();
   const cql = `year >= ${MIN_YEAR} AND BBOX(geom,${latlng.lng - d},${latlng.lat - d},${latlng.lng + d},${latlng.lat + d},'EPSG:4674')`;
@@ -365,19 +371,15 @@ async function openAt(map, latlng) {
   let data;
   try {
     const resp = await fetch(`${WFS_URL}?${params}`, { signal: ctrl.signal });
-    if (!resp.ok) return;
+    if (!resp.ok) return null;
     data = await resp.json();
   } catch (_) {
-    return;
+    return null;
   } finally {
     clearTimeout(timer);
   }
   const hit = pickHit(data?.features || [], pt, d);
-  if (!hit) return;
-  L.popup({ maxWidth: 360, autoPan: false })
-    .setLatLng(latlng)
-    .setContent(popupHtml(hit.properties || {}))
-    .openOn(map);
+  return hit ? popupHtml(hit.properties || {}) : null;
 }
 
 function detach(map) {

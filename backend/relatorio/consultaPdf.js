@@ -946,6 +946,10 @@ async function buildConsultaPdf(raw = {}) {
       y = drawInfoTable(doc, y, [
         { label: 'Sobreposição com PRODES', value: 'Identificada' },
         { label: 'Polígonos na área', value: String(prodesCruzamento.count) },
+        {
+          label: prodesCruzamento.count > 1 ? 'Tamanho total dos alertas' : 'Tamanho total do alerta',
+          value: formatHa((prodesCruzamento.itens || []).reduce((sum, it) => sum + (Number(it.areaHa) || 0), 0)),
+        },
         { label: 'Tamanho da sobreposição', value: formatHa(prodesCruzamento.areaHa) },
         { label: 'Percentual sobreposto', value: formatPct(prodesCruzamento.pct) },
       ]);

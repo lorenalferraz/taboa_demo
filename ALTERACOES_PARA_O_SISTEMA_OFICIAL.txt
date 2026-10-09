@@ -786,6 +786,55 @@ Como conferir
   depois do mapa base, sem pausa de alguns segundos.
 
 
+30. Popup de todas as camadas, área total do alerta e Limpar sem mexer nas camadas — 07/10/2026
+-----------------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Clicar no mapa abre um popup único com todas as camadas ligadas
+    naquele ponto (PRODES, assentamentos, imóveis, UCs etc.), em
+    blocos separados, na mesma ordem da aba Camadas. Antes só a camada
+    de cima respondia: com o PRODES no topo, o assentamento embaixo não
+    abria popup. Agora funciona em qualquer ordem.
+  - O bloco do PRODES aparece logo depois (consulta ao INPE no clique),
+    com o aviso "Consultando o PRODES…" enquanto carrega. O popup se
+    ajusta ao mapa para não ficar cortado.
+  - No relatório, em "Resultado analítico da consulta", entrou a linha
+    "Tamanho total do alerta" (ou "dos alertas", quando há mais de um),
+    com a soma das áreas sobrepostas em hectares.
+  - O botão Limpar esvazia os campos e tira do mapa a consulta (ponto,
+    desenho, município e imóvel), mas mantém as camadas que o usuário
+    ligou e a ordem que montou. Só desliga Municípios ou Imóveis rurais
+    se elas tiverem sido ligadas automaticamente pelo filtro de
+    município ou de CAR.
+  - Texto do passo 7 das Orientações atualizado.
+  - Versão da API: mapa-v37.
+
+Por quê
+  Pedido da usuária: popups de qualquer camada, em qualquer ordem;
+  área total do alerta no quadro de informações; e Limpar sem desfazer
+  o jogo de camadas montado.
+
+Arquivos
+  - frontend/src/taboa/lib/stackedPopup.js (novo)
+  - frontend/src/taboa/lib/prodesLayer.js
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/taboa/lib/localMapLayers.js
+  - frontend/src/styles/app.css
+  - frontend/src/App.jsx
+  - backend/relatorio/consultaPdf.js
+  - backend/server.js
+
+Como conferir
+  - Ligar PRODES e Assentamentos e clicar num desmatamento dentro de um
+    assentamento (ex.: -14.2816, -39.26065, Itacaré): o popup mostra os
+    dois. Arrastar Assentamentos para cima do PRODES: continua mostrando
+    os dois, agora com o assentamento primeiro.
+  - Fazer uma consulta com desmatamento e baixar o PDF: aparece "Tamanho
+    total do alerta" no resultado analítico.
+  - Ligar algumas camadas, consultar e clicar em Limpar: os campos e o
+    desenho somem, e as camadas continuam como estavam.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

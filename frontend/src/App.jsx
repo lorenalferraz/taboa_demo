@@ -530,7 +530,8 @@ export default function App() {
                 <h3>Limpar e Resetar</h3>
                 <p>
                   Limpar esvazia os campos e tira do mapa o município, o imóvel e a área
-                  da consulta, sem mudar o zoom. Resetar devolve o mapa ao enquadramento
+                  da consulta, sem mudar o zoom nem as camadas que você ligou ou
+                  reordenou na aba Camadas. Resetar devolve o mapa ao enquadramento
                   inicial da faixa, sem apagar o que você digitou.
                 </p>
               </div>

@@ -899,6 +899,8 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   transform: rotate(180deg);
 }
 .popup-title { font-weight: 600; margin-bottom: 8px; font-size: 1rem; color: var(--accent); }
+.popup-stack-item + .popup-stack-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.popup-stack-loading { color: var(--text-muted); font-size: 0.82rem; }
 .popup-row { margin: 4px 0; color: var(--text-muted); font-size: 0.85rem; }
 .popup-stats { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); min-width: 260px; }
 .popup-stats-title { font-size: 0.75rem; font-weight: 600; color: var(--danger); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }

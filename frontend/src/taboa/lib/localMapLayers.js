@@ -22,6 +22,8 @@ const localLoadPromises = new Map();
 const layerVisibility = new Map();
 /** CAR selecionado na Consulta — restringe a camada de imóveis rurais. */
 let imoveisCarFilter = '';
+/** Imóveis rurais ligados pela escolha do CAR, e não pelo usuário na aba Camadas. */
+let imoveisAutoOn = false;
 
 /** GeoJSON INCRA completo (cache). */
 let incraAssentamentosFC = null;
@@ -466,6 +468,7 @@ function applyLayerVisibility(id) {
  */
 export function setRemoteLayerVisible(id, visible, opts = {}) {
   layerVisibility.set(id, !!visible);
+  if (id === 'local:imoveis_rurais') imoveisAutoOn = false;
   if (id === 'local:assentamentos' && visible && opts.showAll) {
     incraAssentFilter = '';
     try {
@@ -524,15 +527,17 @@ export function setImoveisRuraisCarFilter(car, opts = {}) {
   const cfg = SHAPE_OVERLAY_LAYERS.find((c) => c.id === 'imoveis_rurais');
   if (!cfg) return Promise.resolve();
   if (imoveisCarFilter && opts.enable !== false) {
+    if (!isLayerWantedVisible('local:imoveis_rurais')) imoveisAutoOn = true;
     layerVisibility.set('local:imoveis_rurais', true);
     const chk = document.getElementById('chkInemaImoveisRurais');
     if (chk) chk.checked = true;
   }
-  if (!imoveisCarFilter && opts.enable === false) {
+  if (!imoveisCarFilter && opts.enable === false && imoveisAutoOn) {
     layerVisibility.set('local:imoveis_rurais', false);
     const chk = document.getElementById('chkInemaImoveisRurais');
     if (chk) chk.checked = false;
   }
+  if (!imoveisCarFilter) imoveisAutoOn = false;
   if (!isLayerWantedVisible('local:imoveis_rurais') && !imoveisCarFilter) {
     applyLayerVisibility('local:imoveis_rurais');
     return Promise.resolve();
@@ -544,6 +549,7 @@ export function resetRemoteLayersToDefault() {
   layerVisibility.clear();
   incraAssentFilter = '';
   imoveisCarFilter = '';
+  imoveisAutoOn = false;
   for (const e of remoteWmsEntries) applyLayerVisibility(e.id);
   applyIncraAssentamentoFilter('', { fitMap: false });
 }

@@ -43,6 +43,7 @@ import {
 import { setupMapPopupPlacement } from './lib/popupPlacement.js';
 import { applyLayerOrder, bindLayerList, rendererFor } from './lib/layerOrder.js';
 import { setProdesVisible } from './lib/prodesLayer.js';
+import { installStackedPopups } from './lib/stackedPopup.js';
 import {
   buildRegistrosLayer,
   buildRegistrosBufferLayer,
@@ -124,6 +125,7 @@ export function bootstrapTaboa() {
   if (__taboaBootstrapped) return;
   __taboaBootstrapped = true;
   applyLightTheme();
+  installStackedPopups();
 
     const API_BASE = getApiBase();
     let loadedGeoJSONByFile = {}; // { filename: geojson } - arquivos carregados em memória
@@ -1033,13 +1035,18 @@ export function bootstrapTaboa() {
       applyAssentamentoSelect(String(idx), { fit: true }).catch((e) => console.warn('assentamento:', e));
     }
 
-    function clearMunicipioFromMap() {
+    /** Municípios ligados pela escolha do município, e não pelo usuário na aba Camadas. */
+    let municipiosAutoOn = false;
+
+    function clearMunicipioFromMap({ keepLayers = false } = {}) {
       const features = assentamentosGeoJSON?.features || [];
       selectedShapeIndices.clear();
       for (let i = 0; i < features.length; i++) {
         selectedShapeIndices.add(i);
         toggleShapeVisibility(i, true);
       }
+      if (keepLayers && !municipiosAutoOn) return;
+      municipiosAutoOn = false;
       const chk = document.getElementById('chkShape');
       if (chk) chk.checked = false;
       toggleShapeLayer(false);
@@ -1255,7 +1262,7 @@ export function bootstrapTaboa() {
           if (!map) return;
           try { map.closePopup(); } catch (_) {}
           removeFaixaSearchLayerFromMap();
-          clearMunicipioFromMap();
+          clearMunicipioFromMap({ keepLayers: true });
         },
         onImovelSelected: (feat) => {
           const car = String(feat?.properties?.NUMERO_CAR || '').trim();
@@ -1277,6 +1284,7 @@ export function bootstrapTaboa() {
     setupConsultaCadastro();
 
     document.getElementById('chkShape').addEventListener('change', function () {
+      municipiosAutoOn = false;
       toggleShapeLayer(this.checked);
     });
 
@@ -1683,6 +1691,7 @@ export function bootstrapTaboa() {
       const chk = document.getElementById('chkShape');
       if (chk && !chk.checked) {
         chk.checked = true;
+        municipiosAutoOn = true;
         toggleShapeLayer(true);
       } else if (chk?.checked) {
         toggleShapeLayer(true);
