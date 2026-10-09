@@ -901,6 +901,14 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
 .popup-title { font-weight: 600; margin-bottom: 8px; font-size: 1rem; color: var(--accent); }
 .popup-stack-item + .popup-stack-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .popup-stack-loading { color: var(--text-muted); font-size: 0.82rem; }
+.popup-stack-layer {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted);
+}
+.popup-stack-layer::before {
+  content: ''; width: 10px; height: 10px; border-radius: 2px; flex: none;
+  background: var(--layer-color, var(--text-muted));
+}
 .popup-row { margin: 4px 0; color: var(--text-muted); font-size: 0.85rem; }
 .popup-stats { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); min-width: 260px; }
 .popup-stats-title { font-size: 0.75rem; font-weight: 600; color: var(--danger); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }

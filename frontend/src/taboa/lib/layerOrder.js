@@ -45,6 +45,17 @@ export function paneName(id) {
   return `taboa-${id}`;
 }
 
+/** Nome e cor da camada como aparecem na aba Camadas, a partir do pane `taboa-<id>`. */
+export function layerInfoFromPane(pane) {
+  const id = String(pane || '').replace(/^taboa-/, '');
+  const chkId = Object.keys(CHECKBOX_TO_LAYER).find((k) => CHECKBOX_TO_LAYER[k] === id);
+  const input = chkId ? document.getElementById(chkId) : null;
+  if (!input) return null;
+  const name = (input.getAttribute('aria-label') || '').split('. ')[0].trim();
+  const color = input.closest('.toggle-switch')?.style.getPropertyValue('--layer-color') || '';
+  return name ? { name, color: color.trim() } : null;
+}
+
 function ensurePane(map, id, zIndex) {
   const name = paneName(id);
   if (!map.getPane(name)) map.createPane(name);

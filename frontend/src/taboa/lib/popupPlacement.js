@@ -28,6 +28,7 @@ export function setupMapPopupPlacement(map) {
     const el = popup?.getElement();
     if (!el) return;
     resetPopupFlip(el);
+    if (el.classList.contains('popup-stack')) return;
     requestAnimationFrame(() => {
       const node = popup.getElement();
       if (!node) return;

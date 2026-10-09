@@ -226,6 +226,7 @@ function ensureOverlay(map) {
   registerPopupSource({
     active: () => map.hasLayer(overlay),
     z: () => Number(map.getPane(paneName('prodes'))?.style?.zIndex) || 450,
+    pane: paneName('prodes'),
     html: (latlng) => popupAt(latlng),
   });
   return overlay;

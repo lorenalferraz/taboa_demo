@@ -835,6 +835,37 @@ Como conferir
     desenho somem, e as camadas continuam como estavam.
 
 
+31. Nome da camada no topo de cada bloco do popup — 09/10/2026
+--------------------------------------------------------------
+
+O que passou a valer
+  - No popup que junta as camadas sobrepostas, cada bloco começa com o
+    nome da camada que está mostrando as informações (ex.: "ALERTAS -
+    PRODES", "ASSENTAMENTOS"), com um quadradinho na cor da camada, igual
+    ao da aba Camadas.
+  - O popup se limita à altura do mapa e rola por dentro quando há
+    muitas camadas. Ele também deixa de ser jogado para baixo do ponto
+    (regra antiga para popups que encostam na barra superior), o que o
+    fazia sumir da tela: agora o mapa se desloca para mostrá-lo inteiro.
+
+Por quê
+  Pedido da usuária: identificar de qual camada é cada informação no
+  popup.
+
+Arquivos
+  - frontend/src/taboa/lib/stackedPopup.js
+  - frontend/src/taboa/lib/layerOrder.js
+  - frontend/src/taboa/lib/prodesLayer.js
+  - frontend/src/taboa/lib/popupPlacement.js
+  - frontend/src/styles/app.css
+
+Como conferir
+  Ligar PRODES e Assentamentos e clicar num desmatamento dentro de um
+  assentamento (ex.: -14.2816, -39.26065, Itacaré): o popup mostra
+  "ALERTAS - PRODES" em cima do bloco do alerta e "ASSENTAMENTOS" em
+  cima do bloco do assentamento.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

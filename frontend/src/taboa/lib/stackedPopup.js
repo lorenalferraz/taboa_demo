@@ -4,6 +4,7 @@
  */
 import L from 'leaflet';
 import * as turf from '@turf/turf';
+import { layerInfoFromPane } from './layerOrder.js';
 
 const sources = [];
 let installed = false;
@@ -11,7 +12,7 @@ let seq = 0;
 
 /**
  * Fonte assíncrona de popup (ex.: PRODES, que consulta o WFS no clique).
- * @param {{ active: () => boolean, z: () => number, html: (latlng: L.LatLng) => Promise<string|null> }} src
+ * @param {{ active: () => boolean, z: () => number, pane?: string, html: (latlng: L.LatLng) => Promise<string|null> }} src
  */
 export function registerPopupSource(src) {
   sources.push(src);
@@ -55,13 +56,25 @@ function vectorSections(map, latlng) {
     if (!html || seen.has(html)) return;
     seen.add(html);
     const pane = layer.options.renderer?.options?.pane || layer.options.pane;
-    out.push({ z: paneZ(map, pane), html });
+    out.push({ z: paneZ(map, pane), pane, html });
   });
   return out;
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function sectionHtml(s) {
+  const info = layerInfoFromPane(s.pane);
+  const head = info
+    ? `<div class="popup-stack-layer"${info.color ? ` style="--layer-color:${escapeHtml(info.color)}"` : ''}>${escapeHtml(info.name)}</div>`
+    : '';
+  return `<div class="popup-stack-item">${head}${s.html}</div>`;
+}
+
 function render(sections, pending) {
-  const parts = [...sections].sort((a, b) => b.z - a.z).map((s) => `<div class="popup-stack-item">${s.html}</div>`);
+  const parts = [...sections].sort((a, b) => b.z - a.z).map(sectionHtml);
   if (pending) parts.push('<div class="popup-stack-item popup-stack-loading">Consultando o PRODES…</div>');
   return parts.join('');
 }
@@ -86,7 +99,8 @@ export async function openStackedPopup(map, latlng) {
       popup.update();
       popup._adjustPan?.();
     } else {
-      popup = L.popup({ maxWidth: 380, maxHeight: 360, autoPanPadding: [24, 24], className: 'popup-stack' })
+      const maxHeight = Math.max(160, Math.min(360, map.getSize().y - 90));
+      popup = L.popup({ maxWidth: 380, maxHeight, autoPanPadding: [24, 24], className: 'popup-stack' })
         .setLatLng(latlng)
         .setContent(html)
         .openOn(map);
@@ -97,7 +111,7 @@ export async function openStackedPopup(map, latlng) {
   const extra = await Promise.all(active.map(async (s) => {
     try {
       const html = await s.html(latlng);
-      return html ? { z: s.z(), html } : null;
+      return html ? { z: s.z(), pane: s.pane, html } : null;
     } catch (_) {
       return null;
     }
