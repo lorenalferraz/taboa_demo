@@ -10,6 +10,7 @@ export function sourceLabelPt(source) {
     'map-point': 'Ponto no mapa',
     'map-polygon': 'Polígono no mapa',
     'imovel-car': 'Imóvel rural (CAR)',
+    'assentamento-car': 'Assentamento (CAR)',
   };
   return map[source] || source || '—';
 }

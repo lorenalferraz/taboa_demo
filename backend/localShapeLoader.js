@@ -494,6 +494,12 @@ function compactSearch(s) {
 let _imoveisCatalog = null;
 /** @type {Promise<object[]> | null} */
 let _imoveisCatalogPromise = null;
+/** @type {object[] | null} */
+let _assentamentosCarCatalog = null;
+/** @type {Promise<object[]> | null} */
+let _assentamentosCarCatalogPromise = null;
+/** Prefixo do índice na busca unificada de CAR (imóvel rural × assentamento). */
+const ASSENTAMENTO_CAR_PREFIX = 'a:';
 
 function imoveisCatalogCachePath(idx) {
   return path.join(path.dirname(idx.ndjsonPath), 'imoveis.catalog.json');
@@ -578,21 +584,67 @@ async function ensureImoveisCatalog() {
   }
 }
 
-async function searchImoveisRurais({ q = '', municipio = '', limit = 40 } = {}) {
-  const items = await ensureImoveisCatalog();
-  const query = foldSearch(q);
-  const queryCompact = compactSearch(q);
-  const munFold = foldSearch(municipio);
-  const cap = Math.min(80, Math.max(1, Number(limit) || 40));
+async function ensureAssentamentosCarCatalog() {
+  if (_assentamentosCarCatalog) return _assentamentosCarCatalog;
+  if (_assentamentosCarCatalogPromise) return _assentamentosCarCatalogPromise;
+  _assentamentosCarCatalogPromise = (async () => {
+    const features = await loadAssentamentosFeatures();
+    const items = [];
+    for (let i = 0; i < features.length; i++) {
+      const p = features[i]?.properties || {};
+      const car = String(p.numero_car || p.NUMERO_CAR || '').trim();
+      if (!car) continue;
+      const nome = String(p.denominaca || p.nome_projeto || p.nome_proje || '').trim().replace(/^["']+|["']+$/g, '');
+      const mun = String(p.municipio || p.nm_municip || '').trim();
+      items.push({
+        i: `${ASSENTAMENTO_CAR_PREFIX}${i}`,
+        car,
+        nome,
+        mun,
+        ide: p.ide_imovel != null ? String(p.ide_imovel).trim() : '',
+        source: 'assentamento-car',
+        search: foldSearch(`${car} ${nome} ${mun}`),
+        munFold: foldSearch(mun),
+      });
+    }
+    _assentamentosCarCatalog = items;
+    return items;
+  })();
+  try {
+    return await _assentamentosCarCatalogPromise;
+  } catch (err) {
+    _assentamentosCarCatalogPromise = null;
+    throw err;
+  }
+}
+
+function matchCatalogItems(items, { query, queryCompact, munFold }) {
   const matched = [];
   for (const it of items) {
-    if (munFold && !foldSearch(it.mun).startsWith(munFold)) continue;
+    if (munFold && !foldSearch(it.mun).startsWith(munFold) && !(it.munFold || '').startsWith(munFold)) continue;
     const carCompact = compactSearch(it.car);
     const nameHit = query && it.search.includes(query);
     const carHit = queryCompact.length >= 2 && carCompact.includes(queryCompact);
     if (query && !nameHit && !carHit) continue;
     matched.push(it);
   }
+  return matched;
+}
+
+async function searchImoveisRurais({ q = '', municipio = '', limit = 40 } = {}) {
+  const [imoveis, assentamentos] = await Promise.all([
+    ensureImoveisCatalog(),
+    ensureAssentamentosCarCatalog(),
+  ]);
+  const query = foldSearch(q);
+  const queryCompact = compactSearch(q);
+  const munFold = foldSearch(municipio);
+  const cap = Math.min(80, Math.max(1, Number(limit) || 40));
+  const filters = { query, queryCompact, munFold };
+  const matched = [
+    ...matchCatalogItems(imoveis, filters),
+    ...matchCatalogItems(assentamentos, filters),
+  ];
   const rank = (it) => {
     const car = compactSearch(it.car);
     if (queryCompact && car === queryCompact) return 0;
@@ -603,22 +655,52 @@ async function searchImoveisRurais({ q = '', municipio = '', limit = 40 } = {}) 
   matched.sort((a, b) => rank(a) - rank(b)
     || String(a.nome || a.car).localeCompare(String(b.nome || b.car), 'pt-BR')
     || String(a.car).localeCompare(String(b.car), 'pt-BR'));
-  const out = matched.slice(0, cap).map((it) => ({
-    i: it.i,
-    car: it.car,
-    nome: it.nome,
-    mun: it.mun,
-    ide: it.ide,
-    label: it.nome ? `${it.car} — ${it.nome}` : it.car,
-  }));
-  return { items: out, total: items.length, matched: matched.length };
+  const out = matched.slice(0, cap).map((it) => {
+    const isAssent = String(it.i).startsWith(ASSENTAMENTO_CAR_PREFIX) || it.source === 'assentamento-car';
+    const baseLabel = it.nome ? `${it.car} — ${it.nome}` : it.car;
+    return {
+      i: it.i,
+      car: it.car,
+      nome: it.nome,
+      mun: it.mun,
+      ide: it.ide,
+      source: isAssent ? 'assentamento-car' : 'imovel-rural',
+      label: isAssent ? `${baseLabel} (assentamento)` : baseLabel,
+    };
+  });
+  return {
+    items: out,
+    total: imoveis.length + assentamentos.length,
+    matched: matched.length,
+  };
 }
 
 function getImovelByIndex(i, opts = {}) {
+  const key = String(i ?? '');
+  if (key.startsWith(ASSENTAMENTO_CAR_PREFIX)) {
+    const n = Number(key.slice(ASSENTAMENTO_CAR_PREFIX.length));
+    if (!Number.isFinite(n) || n < 0) return null;
+    // Catálogo e features compartilham o mesmo índice do GeoJSON carregado.
+    const cached = global.__TABOA_ASSENTAMENTOS_FEATURES__;
+    if (Array.isArray(cached) && cached[n]) return cached[n];
+    // Fallback síncrono não disponível: o caller async deve usar getImovelByIndexAsync.
+    return null;
+  }
   const idx = loadHeavyIndex('imoveis_rurais.geojson');
   const n = Number(i);
   if (!Number.isFinite(n) || n < 0 || n >= idx.n) return null;
   return readIndexedFeature(idx, n, !!opts.map);
+}
+
+async function getImovelByIndexAsync(i, opts = {}) {
+  const key = String(i ?? '');
+  if (key.startsWith(ASSENTAMENTO_CAR_PREFIX)) {
+    const n = Number(key.slice(ASSENTAMENTO_CAR_PREFIX.length));
+    if (!Number.isFinite(n) || n < 0) return null;
+    const features = await loadAssentamentosFeatures();
+    return features[n] || null;
+  }
+  return getImovelByIndex(i, opts);
 }
 
 async function loadFeaturesByBbox(filename, bbox, limit = 0, opts = {}) {
@@ -660,8 +742,10 @@ const shapeApi = {
   municipioPorCoordenadaForApi,
   municipiosPorCoordenadasForApi,
   ensureImoveisCatalog,
+  ensureAssentamentosCarCatalog,
   searchImoveisRurais,
   getImovelByIndex,
+  getImovelByIndexAsync,
 };
 global.__TABOA_SHAPE__ = shapeApi;
 module.exports = shapeApi;

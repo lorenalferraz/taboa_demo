@@ -466,7 +466,7 @@ export function setupConsultaTab(ctx) {
     if (latIn) latIn.value = '';
     if (lngIn) lngIn.value = '';
     updateGeomStatus();
-    paintPreview({ fly: source === 'map-polygon' || source === 'imovel-car' });
+    paintPreview({ fly: source === 'map-polygon' || source === 'imovel-car' || source === 'assentamento-car' });
   }
 
   function applyCoordsFromInputs() {
@@ -974,9 +974,15 @@ export function setupConsultaTab(ctx) {
           return;
         }
         cancelMapMode();
-        setPolygonGeometry(feat, 'imovel-car', { car: item.car || '' });
+        const fromAssent = item.source === 'assentamento-car' || String(item.i).startsWith('a:');
+        setPolygonGeometry(feat, fromAssent ? 'assentamento-car' : 'imovel-car', { car: item.car || '' });
         if (typeof onImovelSelected === 'function') onImovelSelected(feat);
-        setStatus('Imóvel rural selecionado. Clique em Consultar.', false);
+        setStatus(
+          fromAssent
+            ? 'Assentamento (CAR) selecionado. Clique em Consultar.'
+            : 'Imóvel rural selecionado. Clique em Consultar.',
+          false,
+        );
       } catch (e) {
         setStatus('Erro ao carregar o imóvel: ' + (e.message || e), true);
       }
@@ -1057,7 +1063,7 @@ export function setupConsultaTab(ctx) {
         input.value = '';
         delete input.dataset.index;
         delete input.dataset.car;
-        if (geometry?.source === 'imovel-car') {
+        if (geometry?.source === 'imovel-car' || geometry?.source === 'assentamento-car') {
           geometry = null;
           clearPreview();
           updateGeomStatus();

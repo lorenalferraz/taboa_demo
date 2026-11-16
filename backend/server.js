@@ -220,7 +220,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'mapa-v37',
+      rev: 'mapa-v38',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
@@ -529,22 +529,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/shape/imovel?i=
+  // GET /api/shape/imovel?i=  (número = imóvel rural; a:<n> = assentamento com CAR)
   if (targetPath === '/api/shape/imovel' && req.method === 'GET') {
-    const i = Number(url.searchParams.get('i'));
-    try {
-      const feature = shapeFn('getImovelByIndex')(i);
-      if (!feature) {
-        res.writeHead(404, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-        res.end(JSON.stringify({ ok: false, error: 'Imóvel não encontrado.' }));
-        return;
+    const i = String(url.searchParams.get('i') || '');
+    (async () => {
+      try {
+        const getAsync = shapeFn('getImovelByIndexAsync');
+        const feature = typeof getAsync === 'function'
+          ? await getAsync(i)
+          : shapeFn('getImovelByIndex')(i);
+        if (!feature) {
+          res.writeHead(404, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+          res.end(JSON.stringify({ ok: false, error: 'Imóvel não encontrado.' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
+        res.end(JSON.stringify({ ok: true, feature }));
+      } catch (e) {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+          res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
+        }
       }
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS });
-      res.end(JSON.stringify({ ok: true, feature }));
-    } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-      res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
-    }
+    })();
     return;
   }
 

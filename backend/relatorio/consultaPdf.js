@@ -104,6 +104,7 @@ function sourceLabel(source) {
     'map-point': 'Ponto no mapa',
     'map-polygon': 'Polígono no mapa',
     'imovel-car': 'Imóvel rural (CAR)',
+    'assentamento-car': 'Assentamento (CAR)',
   };
   return map[source] || source || '—';
 }
@@ -572,6 +573,9 @@ function geometriaCadastral(raw, prepared) {
   }
   if (raw.source === 'imovel-car') {
     return raw.car ? `Polígono do imóvel rural (CAR ${raw.car})` : 'Polígono do imóvel rural (CAR)';
+  }
+  if (raw.source === 'assentamento-car') {
+    return raw.car ? `Polígono do assentamento (CAR ${raw.car})` : 'Polígono do assentamento (CAR)';
   }
   return prepared.coord !== '—' ? prepared.coord : prepared.origem;
 }

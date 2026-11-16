@@ -915,6 +915,32 @@ Como conferir
     SIPRA (quando houver).
 
 
+33. Busca de CAR da Consulta também acha assentamentos — 16/11/2026
+-------------------------------------------------------------------
+
+O que passou a valer
+  - O campo "Imóvel rural (CAR)" da Consulta busca também os CARs do
+    arquivo assentamentos_car.geojson, além dos imóveis rurais.
+  - Resultados de assentamento aparecem com o sufixo "(assentamento)" e,
+    ao selecionar, o mapa carrega o polígono desse shape.
+  - Versão da API: mapa-v38.
+
+Por quê
+  O CAR BA-2920700-1EBC… existia só no shape de assentamentos; a lista
+  da Consulta lia apenas imóveis rurais e não encontrava.
+
+Arquivos
+  - backend/localShapeLoader.js
+  - backend/server.js
+  - backend/relatorio/consultaPdf.js
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/lib/consultaReport.js
+
+Como conferir
+  Em Consulta, digitar ba-2920700-1ebc no campo CAR: deve listar
+  PA Luzitânia (assentamento). Ao escolher, o mapa vai até o polígono.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
