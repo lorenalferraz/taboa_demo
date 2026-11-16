@@ -866,6 +866,55 @@ Como conferir
   cima do bloco do assentamento.
 
 
+32. Assentamentos passam a usar o shape com CAR (órgão ambiental) — 16/11/2026
+-------------------------------------------------------------------------------
+
+O que passou a valer
+  - A camada Assentamentos deixa de ler backend/shape/assentamentos.geojson
+    (145 polígonos SIPRA, sem CAR) e passa a ler
+    backend/shape/assentamentos_car.geojson (771 polígonos com numero_car,
+    ide_imovel, status, área registrada etc.).
+  - O arquivo antigo permanece na pasta só como histórico; o sistema não
+    o usa mais. Assim não há duas fontes de assentamento ao mesmo tempo.
+  - Popup e busca do seletor passam a mostrar/aceitar CAR, denominaca,
+    cod_sipra e demais campos do arquivo novo (com fallback dos nomes
+    antigos, se algum dado residual aparecer).
+  - O CAR BA-2920700-1EBC… (PA Luzitânia, Maraú), que não existia na
+    lista de imóveis rurais nem no shape SIPRA antigo, passa a aparecer
+    na camada de assentamentos.
+
+Comparação (por que trocar, e o que se perde)
+  - Novo tem CAR; 751 dos 752 CARs desse arquivo não estão no catálogo
+    de imóveis rurais — não é duplicata da camada Imóveis rurais.
+  - Novo tem mais SIPRAs (447 únicos vs 145). Na faixa Tabôa, o recorte
+    geográfico continua valendo (o mapa só desenha o que cai na faixa).
+  - 12 projetos que existiam só no shape antigo e caem na faixa Tabôa
+    não têm correspondente claro no arquivo novo (ex.: PA Marambaia /
+    Itacaré, PA Pancadinha / Almadina). Ficam de fora até o órgão
+    ambiental incluir no shape com CAR.
+
+Por quê
+  O CAR dos assentamentos do órgão ambiental estava em arquivo separado;
+  o shape SIPRA antigo não tinha esse identificador.
+
+Arquivos
+  - backend/shape/assentamentos_car.geojson (novo dado)
+  - frontend/src/taboa/lib/constants.js
+  - frontend/src/taboa/lib/localIncraCatalog.js
+  - frontend/src/taboa/lib/localMapLayers.js
+  - frontend/src/taboa/lib/assentamentoMeta.js
+  - frontend/src/taboa/bootstrap.js
+  - backend/localShapeLoader.js
+  - backend/assentamentos.js
+  - backend/shape-runtime.txt
+
+Como conferir
+  - Buscar no seletor/camada o CAR BA-2920700-1EBC: deve achar PA
+    Luzitânia (Maraú).
+  - Ligar Assentamentos e clicar num polígono: o popup mostra CAR e
+    SIPRA (quando houver).
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

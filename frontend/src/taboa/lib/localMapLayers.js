@@ -7,6 +7,7 @@ import { INCRA_LOCAL_LAYERS } from './localIncraCatalog.js';
 import { SHAPE_OVERLAY_LAYERS } from './localShapeLayers.js';
 import { BY_NOME, normMunNome } from './faixaMunicipiosCatalog.js';
 import { buildAssentamentoPopupHtml } from './assentamentoMeta.js';
+import { ASSENTAMENTOS_FILE } from './constants.js';
 import { rendererFor } from './layerOrder.js';
 import * as turf from '@turf/turf';
 
@@ -167,7 +168,7 @@ async function fetchIncraAssentamentosFC() {
   if (incraAssentamentosFC?.features?.length) return incraAssentamentosFC;
   if (!incraAssentamentosFetch) {
     incraAssentamentosFetch = (async () => {
-      const gj = await fetchGeojsonFile('assentamentos.geojson');
+      const gj = await fetchGeojsonFile(ASSENTAMENTOS_FILE);
       if (!gj?.features?.length) return null;
       const clipped = clipAssentamentosToFaixa(gj);
       incraAssentamentosFC = clipped;
@@ -272,7 +273,7 @@ export function flyToGeojsonFeature(feat, map) {
   return true;
 }
 
-/** Zoom imediato pelo polígono em assentamentos.geojson (não depende da camada no mapa). */
+/** Zoom imediato pelo polígono em assentamentos_car.geojson (não depende da camada no mapa). */
 export function flyToIncraAssentamentoIndex(idx, map) {
   const i = Number(idx);
   if (!Number.isInteger(i) || i < 0) return false;
@@ -290,7 +291,7 @@ export function isIncraAssentamentosLayerReady() {
 }
 
 /**
- * Garante a camada a partir de assentamentos.geojson (sem depender da varredura).
+ * Garante a camada a partir de assentamentos_car.geojson (sem depender da varredura).
  */
 export async function ensureIncraAssentamentosFromFile(map) {
   if (map) hostMap = map;
@@ -358,7 +359,7 @@ function removeIncraAssentamentosMapLayer() {
     remoteWmsEntries.splice(existingIdx, 1);
   }
   incraAssentamentoLeaflets = [];
-  localLoadPromises.delete('assentamentos.geojson');
+  localLoadPromises.delete(ASSENTAMENTOS_FILE);
 }
 
 function createIncraAssentamentosLeafletLayer(gj) {

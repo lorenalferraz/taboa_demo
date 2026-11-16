@@ -59,7 +59,7 @@ function geometryBbox(geometry) {
 
 const SHAPE_DIR = path.join(__dirname, 'shape');
 const MUNICIPIOS_FILE = 'municipios.geojson';
-const ASSENTAMENTOS_FILE = 'assentamentos.geojson';
+const ASSENTAMENTOS_FILE = 'assentamentos_car.geojson';
 const ALERTAS_FILE = 'alertas.geojson';
 /** Acima disso o JSON.parse em string única estoura o limite do V8 (~512 MB). */
 const STREAM_BYTES = 320 * 1024 * 1024;

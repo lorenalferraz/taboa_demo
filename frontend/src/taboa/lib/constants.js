@@ -6,7 +6,8 @@ export const ZOOM_FAIXA_TABOA = 8;
 
 /** Malha municipal da faixa TABOA (62 municípios). */
 export const SHAPE_FILE = 'municipios.geojson';
-export const ASSENTAMENTOS_FILE = 'assentamentos.geojson';
+/** Limites e CAR dos assentamentos (órgão ambiental). Substitui o SIPRA antigo. */
+export const ASSENTAMENTOS_FILE = 'assentamentos_car.geojson';
 export const INDIGENAS_FILE = 'indigenas.geojson';
 export const QUILOMBOLAS_FILE = 'quilombolas.geojson';
 export const UC_FEDERAIS_FILE = 'uc_federais.geojson';

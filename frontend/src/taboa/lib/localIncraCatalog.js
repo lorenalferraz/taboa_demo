@@ -1,6 +1,7 @@
 /**
  * Catálogo de camadas INCRA locais (GeoJSON em backend/shape/).
  */
+import { ASSENTAMENTOS_FILE } from './constants.js';
 
 const ASSENTAMENTOS_STYLE = { color: '#c2410c', weight: 1.5, fillColor: '#fb923c', fillOpacity: 0.2 };
 
@@ -8,7 +9,7 @@ export const INCRA_LOCAL_LAYERS = [
   {
     id: 'assentamentos',
     label: 'Assentamentos (local)',
-    geojson: 'assentamentos.geojson',
+    geojson: ASSENTAMENTOS_FILE,
     style: ASSENTAMENTOS_STYLE,
     local: true,
     source: 'INCRA',

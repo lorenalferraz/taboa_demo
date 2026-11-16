@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Camada local de assentamentos — backend/shape/assentamentos.geojson.
+ * Camada local de assentamentos — backend/shape/assentamentos_car.geojson.
  */
 const {
   loadAssentamentosFeatures,

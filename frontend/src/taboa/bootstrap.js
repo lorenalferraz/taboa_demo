@@ -843,7 +843,11 @@ export function bootstrapTaboa() {
           const extra = [
             f.properties?.codigo_sipra,
             f.properties?.cd_sipra,
+            f.properties?.cod_sipra,
             f.properties?.sipra,
+            f.properties?.numero_car,
+            f.properties?.NUMERO_CAR,
+            f.properties?.denominaca,
             f.properties?.municipio,
             f.properties?.nm_municip,
           ].filter(Boolean).join(' ');

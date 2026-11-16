@@ -1,41 +1,52 @@
 /**
- * Metadados e rótulos para assentamentos (assentamentos.geojson).
+ * Metadados e rótulos para assentamentos (assentamentos_car.geojson).
+ * Mantém fallbacks dos campos do arquivo SIPRA antigo.
  */
 
 function fmtVal(v) {
   if (v == null || v === '') return '';
   const s = String(v).trim();
-  if (!s || s.toLowerCase() === 'null') return '';
+  if (!s || s.toLowerCase() === 'null' || s.toUpperCase() === 'N/D') return '';
   return s;
+}
+
+function fmtHa(v) {
+  const s = fmtVal(v);
+  return s ? `${s} ha` : '';
 }
 
 /** @returns {{ label: string, value: string }[]} */
 export function assentamentoFeatureDetailRows(props) {
   const p = props || {};
   const rows = [
-    { label: 'Nome', value: fmtVal(p.nome_projeto || p.nome_proje) },
-    { label: 'SIPRA', value: fmtVal(p.cd_sipra || p.cod_sipra) },
+    { label: 'Nome', value: fmtVal(p.denominaca || p.nome_projeto || p.nome_proje) },
+    { label: 'CAR', value: fmtVal(p.numero_car || p.NUMERO_CAR) },
+    { label: 'SIPRA', value: fmtVal(p.cod_sipra || p.cd_sipra) },
     { label: 'Município', value: fmtVal(p.municipio || p.nm_municip) },
-    { label: 'Área declarada', value: fmtVal(p.area_hectare_declarada) ? `${fmtVal(p.area_hectare_declarada)} ha` : '' },
-    { label: 'Área calculada', value: fmtVal(p.area_calc_ha) ? `${fmtVal(p.area_calc_ha)} ha` : '' },
-    { label: 'Famílias', value: fmtVal(p.num_familias) },
+    { label: 'Área registrada', value: fmtHa(p.area_regis || p.area_hectare_declarada) },
+    { label: 'Área calculada', value: fmtHa(p.area_calc_ha) },
+    { label: 'Módulos fiscais', value: fmtVal(p.qtd_modfis) },
+    { label: 'Famílias', value: fmtVal(p.qtd_famili || p.num_familias) },
     { label: 'Capacidade', value: fmtVal(p.capacidade) },
+    { label: 'Status', value: fmtVal(p.status) },
     { label: 'Fase', value: fmtVal(p.descricao_fase || p.fase) },
-    { label: 'Criação', value: fmtVal(p.data_de_criacao) },
+    { label: 'Assentamento', value: fmtVal(p.dt_assenta || p.data_de_criacao) },
     { label: 'Obtenção', value: fmtVal(p.forma_obtencao) },
     { label: 'Data obtenção', value: fmtVal(p.data_obtencao) },
+    { label: 'IDE imóvel', value: fmtVal(p.ide_imovel) },
     { label: 'SR', value: fmtVal(p.sr) },
   ];
   return rows.filter((r) => r.value);
 }
 
 export function assentamentoFeatureTitle(props) {
-  return fmtVal(props?.nome_projeto || props?.nome_proje) || 'Assentamento';
+  return fmtVal(props?.denominaca || props?.nome_projeto || props?.nome_proje) || 'Assentamento';
 }
 
 export function assentamentoFeatureSubtitle(props) {
   const parts = [
-    fmtVal(props?.cd_sipra || props?.cod_sipra) ? `SIPRA ${fmtVal(props?.cd_sipra || props?.cod_sipra)}` : '',
+    fmtVal(props?.numero_car || props?.NUMERO_CAR),
+    fmtVal(props?.cod_sipra || props?.cd_sipra) ? `SIPRA ${fmtVal(props?.cod_sipra || props?.cd_sipra)}` : '',
     fmtVal(props?.municipio),
   ].filter(Boolean);
   return parts.join(' · ');
@@ -50,7 +61,7 @@ export function buildAssentamentoPopupHtml(props, esc) {
   const subtitle = assentamentoFeatureSubtitle(props);
   const rows = assentamentoFeatureDetailRows(props).filter((r) => r.label !== 'Nome');
   const body = rows
-    .slice(0, 10)
+    .slice(0, 12)
     .map((r) => `<div class="popup-row">${esc(r.label)}: ${esc(r.value)}</div>`)
     .join('');
   return `
