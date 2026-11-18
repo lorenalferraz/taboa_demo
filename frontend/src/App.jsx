@@ -172,9 +172,14 @@ export default function App() {
                   <div className="consulta-field">
                     <span className="consulta-label">Imóvel rural (CAR)</span>
                     <div className="filter-combobox">
-                      <input type="text" id="consultaImovel" className="filter-input filter-combobox-input" placeholder="Buscar pelo CAR…" autoComplete="off" />
-                      <button type="button" className="filter-combobox-arrow" id="btnImovelToggle" tabIndex={-1}>▾</button>
-                      <ul className="filter-combobox-list" id="imoveisDropdown" hidden></ul>
+                      <input
+                        type="text"
+                        id="consultaImovel"
+                        className="filter-input filter-combobox-input consulta-car-input"
+                        placeholder="Cole ou digite o CAR completo…"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
                     </div>
                     <p className="consulta-car-status" id="consultaImovelStatus" hidden aria-live="polite" />
                   </div>

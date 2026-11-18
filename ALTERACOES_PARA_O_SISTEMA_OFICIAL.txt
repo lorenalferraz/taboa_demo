@@ -1083,6 +1083,33 @@ Como conferir
   "CAR encontrado — PA Cosme Muniz" e o mapa ir até o assentamento.
 
 
+39. Busca de CAR sem lista: valida formato completo e filtra ao completar — 18/11/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Removida a lista de sugestões ao digitar o CAR. A pessoa digita ou cola
+    o código inteiro.
+  - O CAR SICAR tem 50 caracteres no formato
+    BA-#######-XXXX.XXXX.XXXX.XXXX.XXXX.XXXX.XXXX.XXXX. Ao parar de digitar,
+    o sistema informa se está incompleto (ex.: "faltam N caracteres").
+  - Ao atingir o tamanho completo (ou colar com espaços/texto extra), limpa
+    a cola, valida o formato e executa o filtro: "Buscando CAR…" →
+    "CAR encontrado — {nome}" ou "CAR não encontrado".
+
+Por quê
+  A lista parcial atrapalhava; o fluxo desejado é digitar/colar o CAR
+  completo com validação clara.
+
+Arquivos
+  - frontend/src/App.jsx
+  - frontend/src/styles/app.css
+  - frontend/src/taboa/lib/consultaTab.js
+
+Como conferir
+  Digitar "ba-" não abre lista. Colar o CAR completo (mesmo com espaços)
+  deve normalizar, buscar e mostrar o nome da propriedade.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

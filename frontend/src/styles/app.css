@@ -1086,6 +1086,7 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   gap: 20px;
 }
 .consulta-field { display: flex; flex-direction: column; gap: 8px; }
+.consulta-car-input { padding-right: 12px !important; }
 .consulta-car-status {
   margin: 0;
   font-size: 0.78rem;

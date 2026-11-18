@@ -1106,36 +1106,51 @@ export function setupConsultaTab(ctx) {
 
   function setupImovelCombobox() {
     const input = imovelIn;
-    const ul = document.getElementById('imoveisDropdown');
-    const toggle = document.getElementById('btnImovelToggle');
     const statusEl = document.getElementById('consultaImovelStatus');
-    if (!input || !ul) return;
+    if (!input) return;
     let timer = 0;
-    let lastItems = [];
     let seq = 0;
     let applying = false;
 
-    function munFilter() {
-      return (munIn?.value || '').trim();
-    }
+    /** Formato SICAR BA: BA-#######-XXXX.XXXX.XXXX.XXXX.XXXX.XXXX.XXXX.XXXX (50 caracteres). */
+    const CAR_FULL_LEN = 50;
+    const CAR_COMPACT_LEN = 41;
+    const CAR_PATTERN = /BA-\d{7}-[A-F0-9]{4}(?:\.[A-F0-9]{4}){7}/i;
 
     function compactCar(s) {
       return String(s || '')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '');
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
     }
 
-    function isCarQuery(q) {
-      const compact = compactCar(q);
-      return compact.length >= 4 && /\d/.test(compact);
+    function formatCarFromCompact(compact) {
+      const c = String(compact || '').toUpperCase();
+      if (!/^BA\d{7}[A-F0-9]{32}$/.test(c)) return '';
+      const mun = c.slice(2, 9);
+      const hex = c.slice(9);
+      const parts = [];
+      for (let i = 0; i < 32; i += 4) parts.push(hex.slice(i, i + 4));
+      return `BA-${mun}-${parts.join('.')}`;
     }
 
-    /** CAR completo típico: BA + código IBGE (7) + 32 hex. */
-    function looksLikeFullCar(q) {
-      const c = compactCar(q);
-      return /^ba\d{7}[a-f0-9]{30,}$/i.test(c);
+    /** Extrai e normaliza o CAR (trim, cola com texto extra, espaços). */
+    function extractCar(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return '';
+      const fromPattern = text.match(CAR_PATTERN);
+      if (fromPattern) return fromPattern[0].toUpperCase();
+      const compact = compactCar(text);
+      if (compact.length >= CAR_COMPACT_LEN) {
+        const formatted = formatCarFromCompact(compact.slice(0, CAR_COMPACT_LEN));
+        if (formatted) return formatted;
+      }
+      return text.replace(/\s+/g, '').toUpperCase();
+    }
+
+    function isCompleteCar(car) {
+      return CAR_PATTERN.test(String(car || '')) && String(car).length === CAR_FULL_LEN;
     }
 
     function setCarStatus(text, tone = '') {
@@ -1150,10 +1165,9 @@ export function setupConsultaTab(ctx) {
     async function applyImovel(item) {
       if (!item || applying) return;
       applying = true;
-      input.value = item.car || item.label || '';
+      input.value = item.car || '';
       input.dataset.index = String(item.i);
       input.dataset.car = item.car || '';
-      ul.hidden = true;
       const nome = String(item.nome || '').trim();
       setCarStatus(
         nome ? `CAR encontrado — ${nome}` : `CAR encontrado — ${item.car}`,
@@ -1194,130 +1208,122 @@ export function setupConsultaTab(ctx) {
       }
     }
 
-    function renderList(items, emptyText) {
-      lastItems = items || [];
-      if (!lastItems.length) {
-        ul.innerHTML = `<li class="filter-combobox-empty">${emptyText || 'Nenhum resultado'}</li>`;
-        return;
-      }
-      ul.innerHTML = lastItems.map((it) => (
-        `<li data-index="${String(it.i).replace(/"/g, '&quot;')}" data-car="${String(it.car || '').replace(/"/g, '&quot;')}">${String(it.label || it.car || '').replace(/</g, '&lt;')}</li>`
-      )).join('');
-      ul.querySelectorAll('li[data-index]').forEach((li) => {
-        li.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          const item = lastItems.find((it) => String(it.i) === li.dataset.index);
-          applyImovel(item);
-        });
-      });
-    }
-
-    async function refresh(open) {
-      if (applying) return;
-      const q = input.value.trim();
-      const mun = munFilter();
-      if (q.length < 2 && !mun) {
-        setCarStatus('');
-        renderList([], 'Digite o CAR ou selecione o município');
-        if (open) positionComboboxList(ul, input);
-        return;
-      }
+    async function lookupFullCar(car) {
       const base = getApiBase();
       if (!base) return;
       const my = ++seq;
-      const searchingCar = isCarQuery(q);
-      if (searchingCar) setCarStatus('Buscando CAR…', 'is-loading');
-      const params = new URLSearchParams({ q, limit: '40' });
-      // Busca por CAR ignora o filtro de município (assentamento pode estar em outro mun).
-      if (mun && !searchingCar) params.set('municipio', mun);
+      setCarStatus('Buscando CAR…', 'is-loading');
       try {
+        const params = new URLSearchParams({ q: car, limit: '5' });
         const res = await fetch(`${String(base).replace(/\/$/, '')}/api/shape/imoveis?${params}`, { cache: 'no-store' });
         const data = await res.json().catch(() => null);
         if (my !== seq) return;
         const items = data?.items || [];
-        const qCompact = compactCar(q);
-        const exact = items.find((it) => compactCar(it.car) === qCompact)
-          || (looksLikeFullCar(q)
-            ? items.find((it) => compactCar(it.car).startsWith(qCompact) || qCompact.startsWith(compactCar(it.car)))
-            : null);
-
-        if (searchingCar && looksLikeFullCar(q)) {
-          if (exact) {
-            renderList([exact], '');
-            ul.hidden = true;
-            const already = compactCar(input.dataset.car || '') === compactCar(exact.car);
-            if (!already) await applyImovel(exact);
-            else {
-              setCarStatus(
-                exact.nome ? `CAR encontrado — ${exact.nome}` : `CAR encontrado — ${exact.car}`,
-                'is-ok',
-              );
-            }
-            return;
+        const target = compactCar(car);
+        const exact = items.find((it) => compactCar(it.car) === target);
+        if (exact) {
+          const already = compactCar(input.dataset.car || '') === target;
+          if (!already) await applyImovel(exact);
+          else {
+            setCarStatus(
+              exact.nome ? `CAR encontrado — ${exact.nome}` : `CAR encontrado — ${exact.car}`,
+              'is-ok',
+            );
           }
-          setCarStatus('CAR não encontrado', 'is-error');
-          renderList([], 'CAR não encontrado');
-          if (open) positionComboboxList(ul, input);
           return;
         }
-
-        if (searchingCar && exact && items.length === 1) {
-          setCarStatus(
-            exact.nome ? `CAR encontrado — ${exact.nome}` : `CAR encontrado — ${exact.car}`,
-            'is-ok',
-          );
-        } else if (searchingCar && !items.length) {
-          setCarStatus(looksLikeFullCar(q) ? 'CAR não encontrado' : 'Nenhum CAR correspondente', 'is-error');
-        } else if (searchingCar && items.length) {
-          setCarStatus(`${items.length} resultado(s). Selecione na lista ou complete o CAR.`, '');
-        } else if (!searchingCar) {
-          setCarStatus('');
-        }
-
-        renderList(items, 'Nenhum imóvel encontrado');
-        const matched = Number(data?.matched);
-        if (matched > items.length) {
-          const more = document.createElement('li');
-          more.className = 'filter-combobox-empty';
-          more.textContent = `Mostrando ${items.length} de ${matched}. Digite o CAR ou o nome para localizar.`;
-          ul.appendChild(more);
-        }
-        if (open) positionComboboxList(ul, input);
+        setCarStatus('CAR não encontrado', 'is-error');
+        delete input.dataset.index;
+        delete input.dataset.car;
       } catch (_) {
         if (my !== seq) return;
-        if (searchingCar) setCarStatus('Falha ao buscar o CAR.', 'is-error');
-        renderList([], 'Falha ao buscar imóveis');
-        if (open) positionComboboxList(ul, input);
+        setCarStatus('Falha ao buscar o CAR.', 'is-error');
       }
     }
 
-    input.addEventListener('focus', () => refresh(true));
+    function evaluateCarInput({ forceLookup = false } = {}) {
+      if (applying) return;
+      const extracted = extractCar(input.value);
+      if (extracted && extracted !== input.value.trim()) {
+        // Normaliza cola com espaços/texto extra sem disparar loop.
+        applying = true;
+        input.value = extracted;
+        applying = false;
+      }
+      const value = String(input.value || '').trim();
+      if (!value) {
+        setCarStatus('');
+        delete input.dataset.index;
+        delete input.dataset.car;
+        return;
+      }
+      if (isCompleteCar(value)) {
+        if (forceLookup || compactCar(input.dataset.car || '') !== compactCar(value)) {
+          lookupFullCar(value);
+        }
+        return;
+      }
+      const compact = compactCar(value);
+      if (compact.length >= CAR_COMPACT_LEN && !isCompleteCar(value)) {
+        const formatted = formatCarFromCompact(compact.slice(0, CAR_COMPACT_LEN));
+        if (formatted) {
+          applying = true;
+          input.value = formatted;
+          applying = false;
+          lookupFullCar(formatted);
+          return;
+        }
+      }
+      const typed = value.length;
+      const missing = Math.max(0, CAR_FULL_LEN - typed);
+      if (typed < 8) {
+        setCarStatus(`Digite ou cole o CAR completo (${CAR_FULL_LEN} caracteres).`, '');
+      } else {
+        setCarStatus(
+          `CAR incompleto: ${typed} de ${CAR_FULL_LEN} caracteres${missing ? ` (faltam ${missing})` : ''}.`,
+          '',
+        );
+      }
+      delete input.dataset.index;
+      // Não limpa dataset.car aqui se o valor ainda é prefixo do CAR já aplicado.
+      if (input.dataset.car && !compactCar(input.dataset.car).startsWith(compact) && !compact.startsWith(compactCar(input.dataset.car))) {
+        delete input.dataset.car;
+      }
+    }
+
     input.addEventListener('input', () => {
       if (applying) return;
-      delete input.dataset.index;
-      delete input.dataset.car;
       clearTimeout(timer);
-      timer = setTimeout(() => refresh(true), 280);
+      const extracted = extractCar(input.value);
+      const completeNow = isCompleteCar(extracted)
+        || compactCar(extracted).length >= CAR_COMPACT_LEN;
+      // Ao atingir o tamanho de um CAR, filtra na hora.
+      if (completeNow) {
+        timer = setTimeout(() => evaluateCarInput({ forceLookup: true }), 60);
+        return;
+      }
+      // Se parar de digitar, mostra validação da quantidade.
+      timer = setTimeout(() => evaluateCarInput({ forceLookup: false }), 700);
     });
-    input.addEventListener('paste', () => {
+
+    input.addEventListener('paste', (ev) => {
+      ev.preventDefault();
+      const pasted = ev.clipboardData?.getData('text') || '';
+      const extracted = extractCar(pasted) || String(pasted || '').trim();
+      applying = true;
+      input.value = extracted;
+      applying = false;
       clearTimeout(timer);
-      timer = setTimeout(() => refresh(true), 80);
+      timer = setTimeout(() => evaluateCarInput({ forceLookup: true }), 40);
     });
-    toggle?.addEventListener('click', () => {
-      if (ul.hidden) refresh(true);
-      else ul.hidden = true;
+
+    input.addEventListener('blur', () => {
+      clearTimeout(timer);
+      evaluateCarInput({ forceLookup: isCompleteCar(extractCar(input.value)) });
     });
-    input.addEventListener('blur', () => setTimeout(() => { ul.hidden = true; }, 160));
-    input.closest('.filter-tab-content')?.addEventListener('scroll', () => { ul.hidden = true; }, { passive: true });
-    window.addEventListener('resize', () => { ul.hidden = true; });
-    document.addEventListener('pointerdown', (ev) => {
-      if (ul.hidden) return;
-      const t = ev.target;
-      if (ul.contains(t) || input.contains(t) || toggle?.contains(t)) return;
-      ul.hidden = true;
-    }, true);
+
     munIn?.addEventListener('input', () => {
-      if (input.dataset.index) {
+      if (input.dataset.index || input.dataset.car) {
         input.value = '';
         delete input.dataset.index;
         delete input.dataset.car;
@@ -1329,10 +1335,6 @@ export function setupConsultaTab(ctx) {
           updateGeomStatus();
         }
         if (typeof onImovelCleared === 'function') onImovelCleared();
-      }
-      if (!ul.hidden) {
-        clearTimeout(timer);
-        timer = setTimeout(() => refresh(true), 180);
       }
     });
   }
