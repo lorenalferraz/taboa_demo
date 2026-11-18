@@ -176,6 +176,7 @@ export default function App() {
                       <button type="button" className="filter-combobox-arrow" id="btnImovelToggle" tabIndex={-1}>▾</button>
                       <ul className="filter-combobox-list" id="imoveisDropdown" hidden></ul>
                     </div>
+                    <p className="consulta-car-status" id="consultaImovelStatus" hidden aria-live="polite" />
                   </div>
                   <div className="consulta-field consulta-cadastro-field">
                     <span className="consulta-label">Informações cadastrais</span>

@@ -1086,6 +1086,15 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   gap: 20px;
 }
 .consulta-field { display: flex; flex-direction: column; gap: 8px; }
+.consulta-car-status {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.consulta-car-status.is-loading { color: var(--text-muted); font-style: italic; }
+.consulta-car-status.is-ok { color: #15803d; }
+.consulta-car-status.is-error { color: #b91c1c; }
 #filterTabConsulta .fs-title,
 .consulta-label {
   letter-spacing: 0;

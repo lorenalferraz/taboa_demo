@@ -993,6 +993,12 @@ export function setupConsultaTab(ctx) {
       delete imovelIn.dataset.index;
       delete imovelIn.dataset.car;
     }
+    const carStatus = document.getElementById('consultaImovelStatus');
+    if (carStatus) {
+      carStatus.hidden = true;
+      carStatus.textContent = '';
+      carStatus.classList.remove('is-ok', 'is-error', 'is-loading');
+    }
     if (typeof onImovelCleared === 'function') onImovelCleared();
     document.querySelectorAll('.filter-combobox-list').forEach((ul) => { ul.hidden = true; });
     if (typeof clearSelectorMap === 'function') clearSelectorMap();
@@ -1102,33 +1108,68 @@ export function setupConsultaTab(ctx) {
     const input = imovelIn;
     const ul = document.getElementById('imoveisDropdown');
     const toggle = document.getElementById('btnImovelToggle');
+    const statusEl = document.getElementById('consultaImovelStatus');
     if (!input || !ul) return;
     let timer = 0;
     let lastItems = [];
     let seq = 0;
+    let applying = false;
 
     function munFilter() {
       return (munIn?.value || '').trim();
     }
 
+    function compactCar(s) {
+      return String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+    }
+
     function isCarQuery(q) {
-      const compact = String(q || '').replace(/[^a-zA-Z0-9]/g, '');
+      const compact = compactCar(q);
       return compact.length >= 4 && /\d/.test(compact);
     }
 
+    /** CAR completo típico: BA + código IBGE (7) + 32 hex. */
+    function looksLikeFullCar(q) {
+      const c = compactCar(q);
+      return /^ba\d{7}[a-f0-9]{30,}$/i.test(c);
+    }
+
+    function setCarStatus(text, tone = '') {
+      if (!statusEl) return;
+      const msg = String(text || '').trim();
+      statusEl.hidden = !msg;
+      statusEl.textContent = msg;
+      statusEl.classList.remove('is-ok', 'is-error', 'is-loading');
+      if (tone) statusEl.classList.add(tone);
+    }
+
     async function applyImovel(item) {
-      if (!item) return;
-      input.value = item.label || item.car || '';
+      if (!item || applying) return;
+      applying = true;
+      input.value = item.car || item.label || '';
       input.dataset.index = String(item.i);
       input.dataset.car = item.car || '';
       ul.hidden = true;
+      const nome = String(item.nome || '').trim();
+      setCarStatus(
+        nome ? `CAR encontrado — ${nome}` : `CAR encontrado — ${item.car}`,
+        'is-ok',
+      );
       const base = getApiBase();
-      if (!base) return;
+      if (!base) {
+        applying = false;
+        return;
+      }
       try {
         const res = await fetch(`${String(base).replace(/\/$/, '')}/api/shape/imovel?i=${encodeURIComponent(item.i)}`, { cache: 'no-store' });
         const data = await res.json().catch(() => null);
         const feat = data?.feature;
         if (!feat?.geometry) {
+          setCarStatus('CAR encontrado, mas não foi possível carregar o polígono.', 'is-error');
           setStatus('Não foi possível carregar o polígono do imóvel.', true);
           return;
         }
@@ -1146,7 +1187,10 @@ export function setupConsultaTab(ctx) {
           false,
         );
       } catch (e) {
+        setCarStatus('Falha ao carregar o CAR.', 'is-error');
         setStatus('Erro ao carregar o imóvel: ' + (e.message || e), true);
+      } finally {
+        applying = false;
       }
     }
 
@@ -1157,7 +1201,7 @@ export function setupConsultaTab(ctx) {
         return;
       }
       ul.innerHTML = lastItems.map((it) => (
-        `<li data-index="${it.i}" data-car="${String(it.car || '').replace(/"/g, '&quot;')}">${String(it.label || it.car || '').replace(/</g, '&lt;')}</li>`
+        `<li data-index="${String(it.i).replace(/"/g, '&quot;')}" data-car="${String(it.car || '').replace(/"/g, '&quot;')}">${String(it.label || it.car || '').replace(/</g, '&lt;')}</li>`
       )).join('');
       ul.querySelectorAll('li[data-index]').forEach((li) => {
         li.addEventListener('mousedown', (e) => {
@@ -1169,9 +1213,11 @@ export function setupConsultaTab(ctx) {
     }
 
     async function refresh(open) {
+      if (applying) return;
       const q = input.value.trim();
       const mun = munFilter();
       if (q.length < 2 && !mun) {
+        setCarStatus('');
         renderList([], 'Digite o CAR ou selecione o município');
         if (open) positionComboboxList(ul, input);
         return;
@@ -1179,23 +1225,67 @@ export function setupConsultaTab(ctx) {
       const base = getApiBase();
       if (!base) return;
       const my = ++seq;
+      const searchingCar = isCarQuery(q);
+      if (searchingCar) setCarStatus('Buscando CAR…', 'is-loading');
       const params = new URLSearchParams({ q, limit: '40' });
-      if (mun && !isCarQuery(q)) params.set('municipio', mun);
+      // Busca por CAR ignora o filtro de município (assentamento pode estar em outro mun).
+      if (mun && !searchingCar) params.set('municipio', mun);
       try {
         const res = await fetch(`${String(base).replace(/\/$/, '')}/api/shape/imoveis?${params}`, { cache: 'no-store' });
         const data = await res.json().catch(() => null);
         if (my !== seq) return;
-        renderList(data?.items || [], 'Nenhum imóvel encontrado');
+        const items = data?.items || [];
+        const qCompact = compactCar(q);
+        const exact = items.find((it) => compactCar(it.car) === qCompact)
+          || (looksLikeFullCar(q)
+            ? items.find((it) => compactCar(it.car).startsWith(qCompact) || qCompact.startsWith(compactCar(it.car)))
+            : null);
+
+        if (searchingCar && looksLikeFullCar(q)) {
+          if (exact) {
+            renderList([exact], '');
+            ul.hidden = true;
+            const already = compactCar(input.dataset.car || '') === compactCar(exact.car);
+            if (!already) await applyImovel(exact);
+            else {
+              setCarStatus(
+                exact.nome ? `CAR encontrado — ${exact.nome}` : `CAR encontrado — ${exact.car}`,
+                'is-ok',
+              );
+            }
+            return;
+          }
+          setCarStatus('CAR não encontrado', 'is-error');
+          renderList([], 'CAR não encontrado');
+          if (open) positionComboboxList(ul, input);
+          return;
+        }
+
+        if (searchingCar && exact && items.length === 1) {
+          setCarStatus(
+            exact.nome ? `CAR encontrado — ${exact.nome}` : `CAR encontrado — ${exact.car}`,
+            'is-ok',
+          );
+        } else if (searchingCar && !items.length) {
+          setCarStatus(looksLikeFullCar(q) ? 'CAR não encontrado' : 'Nenhum CAR correspondente', 'is-error');
+        } else if (searchingCar && items.length) {
+          setCarStatus(`${items.length} resultado(s). Selecione na lista ou complete o CAR.`, '');
+        } else if (!searchingCar) {
+          setCarStatus('');
+        }
+
+        renderList(items, 'Nenhum imóvel encontrado');
         const matched = Number(data?.matched);
-        if (matched > (data?.items || []).length) {
+        if (matched > items.length) {
           const more = document.createElement('li');
           more.className = 'filter-combobox-empty';
-          more.textContent = `Mostrando ${data.items.length} de ${matched}. Digite o CAR ou o nome para localizar.`;
+          more.textContent = `Mostrando ${items.length} de ${matched}. Digite o CAR ou o nome para localizar.`;
           ul.appendChild(more);
         }
         if (open) positionComboboxList(ul, input);
       } catch (_) {
         if (my !== seq) return;
+        if (searchingCar) setCarStatus('Falha ao buscar o CAR.', 'is-error');
         renderList([], 'Falha ao buscar imóveis');
         if (open) positionComboboxList(ul, input);
       }
@@ -1203,9 +1293,15 @@ export function setupConsultaTab(ctx) {
 
     input.addEventListener('focus', () => refresh(true));
     input.addEventListener('input', () => {
+      if (applying) return;
       delete input.dataset.index;
+      delete input.dataset.car;
       clearTimeout(timer);
-      timer = setTimeout(() => refresh(true), 220);
+      timer = setTimeout(() => refresh(true), 280);
+    });
+    input.addEventListener('paste', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => refresh(true), 80);
     });
     toggle?.addEventListener('click', () => {
       if (ul.hidden) refresh(true);
@@ -1225,6 +1321,7 @@ export function setupConsultaTab(ctx) {
         input.value = '';
         delete input.dataset.index;
         delete input.dataset.car;
+        setCarStatus('');
         if (isCarSource(geometry?.source) || propertyRef) {
           geometry = null;
           propertyRef = null;

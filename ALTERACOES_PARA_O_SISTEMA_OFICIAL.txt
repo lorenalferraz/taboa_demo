@@ -1058,6 +1058,31 @@ Como conferir
   PDF, quadro "Propriedade (assentamento)" com o CAR e dados do SIPRA.
 
 
+38. Status da busca de CAR e aplicação automática do CAR completo — 18/11/2026
+-------------------------------------------------------------------------------
+
+O que passou a valer
+  - Abaixo do campo de CAR aparece o status: "Buscando CAR…", depois
+    "CAR encontrado — {nome}" ou "CAR não encontrado".
+  - Ao colar/digitar o CAR completo, o sistema valida e, se achar, aplica
+    sozinho a propriedade (assentamento ou imóvel) no mapa.
+  - Busca por CAR ignora o filtro de município, para o assentamento não
+    sumir da lista quando outro município está selecionado.
+
+Por quê
+  CAR completo às vezes não ficava claro na lista; a usuária precisa de
+  feedback explícito de encontrado / não encontrado.
+
+Arquivos
+  - frontend/src/App.jsx
+  - frontend/src/styles/app.css
+  - frontend/src/taboa/lib/consultaTab.js
+
+Como conferir
+  Colar BA-2913606-4EC8.7FA7.5DA4.4875.A26E.7CF3.66BD.5CE6: deve aparecer
+  "CAR encontrado — PA Cosme Muniz" e o mapa ir até o assentamento.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
