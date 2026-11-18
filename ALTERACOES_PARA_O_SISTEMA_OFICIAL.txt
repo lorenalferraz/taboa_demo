@@ -1031,6 +1031,33 @@ Como conferir
   some, o CAR permanece e o mapa volta o zoom para a propriedade.
 
 
+37. Análise do CAR selecionado não puxa vizinhos; assentamento é a propriedade — 18/11/2026
+--------------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Ao consultar o CAR selecionado (assentamento ou imóvel), a análise e o
+    mapa usam só essa propriedade. Vizinhos que só se sobrepõem ao polígono
+    (comum na base de assentamentos) não entram no amarelo nem no laudo.
+  - No relatório, o assentamento com CAR ocupa o lugar da propriedade:
+    nome, CAR/CEFIR, tipo Assentamento, SIPRA, status, famílias, área etc.
+  - Versão da API: mapa-v41.
+
+Por quê
+  A base de assentamentos se sobrepõe a imóveis ao redor; a busca por
+  interseção trazia propriedades que o usuário não selecionou. Com o CAR
+  de assentamento, a "propriedade" do laudo é o próprio assentamento.
+
+Arquivos
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/lib/consultaReport.js
+  - backend/relatorio/consultaPdf.js
+  - backend/server.js
+
+Como conferir
+  Selecionar BA-2920700-1EBC… e Consultar: só o PA Luzitânia no mapa; no
+  PDF, quadro "Propriedade (assentamento)" com o CAR e dados do SIPRA.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

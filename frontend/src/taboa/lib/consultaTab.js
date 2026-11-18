@@ -258,6 +258,51 @@ export function setupConsultaTab(ctx) {
     return compactGeom(propertyRef.feature);
   }
 
+  /** Cadastro da propriedade selecionada (CAR/assentamento), sem puxar vizinhos. */
+  function selectedImovelPayload() {
+    const feat = propertyRef?.feature || (geometryIsPropertyRef() ? geometry?.feature : null);
+    if (!feat?.geometry) return null;
+    const p = feat.properties || {};
+    const source = propertyRef?.source || geometry?.source || '';
+    const isAssent = source === 'assentamento-car';
+    const car = String(
+      propertyRef?.car
+      || geometry?.car
+      || p.numero_car
+      || p.NUMERO_CAR
+      || '',
+    ).trim();
+    const nome = String(
+      p.denominaca || p.DENOMINACA || p.nome_projeto || p.nome_proje || '',
+    ).trim().replace(/^["']+|["']+$/g, '');
+    const ide = p.ide_imovel != null || p.IDE_IMOVEL != null
+      ? String(p.ide_imovel ?? p.IDE_IMOVEL).trim()
+      : '';
+    const municipio = String(p.municipio || p.MUNICIPIO || p.nm_municip || '').trim();
+    const areaRaw = Number(String(p.area_regis ?? p.AREA_REGIS ?? p.area_hectare_declarada ?? '').replace(',', '.'));
+    const sipra = String(p.cod_sipra || p.cd_sipra || '').trim();
+    const status = String(p.status || '').trim();
+    const familiasRaw = Number(p.qtd_famili ?? p.num_familias);
+    const modFiscaisRaw = Number(p.qtd_modfis);
+    const dtAssenta = String(p.dt_assenta || p.data_de_criacao || '').trim();
+    return {
+      nome: nome || (car ? `CAR ${car}` : 'Propriedade selecionada'),
+      car,
+      ide,
+      municipio,
+      areaHa: Number.isFinite(areaRaw) && areaRaw > 0 ? areaRaw : null,
+      pct: 100,
+      geometry: compactGeom(feat),
+      source,
+      tipo: isAssent ? 'Assentamento' : 'Imóvel rural',
+      sipra: sipra && sipra.toUpperCase() !== 'N/D' ? sipra : '',
+      status,
+      familias: Number.isFinite(familiasRaw) ? familiasRaw : null,
+      modFiscais: Number.isFinite(modFiscaisRaw) ? modFiscaisRaw : null,
+      dtAssenta,
+    };
+  }
+
   function getPinIcon() {
     if (!pinIcon) {
       pinIcon = L.divIcon({
@@ -820,6 +865,8 @@ export function setupConsultaTab(ctx) {
         || (imovelIn?.value || '').trim();
       const propriedadeGeom = compactPropertyGeom();
       const analysisUsesProperty = geometryIsPropertyRef();
+      // Sempre que houver CAR/assentamento selecionado, ele é a "propriedade" do relatório.
+      const selectedImovel = propertyRef ? selectedImovelPayload() : null;
       lastPdfPayload = buildConsultaPdfPayload({
         source: geometry.source,
         kind: geometry.kind,
@@ -838,6 +885,7 @@ export function setupConsultaTab(ctx) {
         propriedadeGeom: analysisUsesProperty ? null : propriedadeGeom,
         propriedadeCar: analysisUsesProperty ? '' : (propertyRef?.car || ''),
         hasPropriedadeRef: !!(propertyRef && !analysisUsesProperty),
+        selectedImovel,
       });
       resultEl.innerHTML = buildConsultaReportHtml();
       bindPdfButton(resultEl);
@@ -847,7 +895,11 @@ export function setupConsultaTab(ctx) {
       const map = liveMap();
       let territorio = { imoveis: [], apps: [], rls: [] };
       try {
-        territorio = await findTerritorioConsulta(built, geometry);
+        // Com CAR selecionado como área de análise, não busca imóveis vizinhos
+        // que só se sobrepõem (ex.: assentamento × imóveis rurais ao redor).
+        territorio = analysisUsesProperty
+          ? { imoveis: [], apps: [], rls: [] }
+          : await findTerritorioConsulta(built, geometry);
       } catch (_) {}
       if (myGen !== runGeneration) return;
       const layers = [];
@@ -858,7 +910,6 @@ export function setupConsultaTab(ctx) {
         layers.push(L.geoJSON(built.aoi, { style: () => AOI_STYLE }));
       }
       territorio.imoveis.forEach((feat) => {
-        // Evita desenhar de novo o mesmo CAR já mostrado como referência.
         const car = String(feat.properties?.NUMERO_CAR || feat.properties?.numero_car || '').trim();
         if (propertyRef?.car && car && car.toLowerCase() === propertyRef.car.toLowerCase()) return;
         layers.push(L.geoJSON(feat, { style: () => IMOVEL_STYLE }));

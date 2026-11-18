@@ -80,5 +80,6 @@ export function buildConsultaPdfPayload(opts) {
     propriedadeGeom: opts.propriedadeGeom || null,
     propriedadeCar: String(opts.propriedadeCar || '').trim(),
     hasPropriedadeRef: !!opts.hasPropriedadeRef,
+    selectedImovel: opts.selectedImovel || null,
   };
 }

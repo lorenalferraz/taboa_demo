@@ -558,14 +558,44 @@ function linhasImoveisCadastrais(imoveis) {
   if (!list.length) {
     return [{ label: 'Propriedade', value: 'Não identificada no cadastro de imóveis rurais.' }];
   }
+  // Detalhes da propriedade selecionada (imóvel rural ou assentamento com CAR).
+  if (list.length === 1) {
+    const im = list[0] || {};
+    const rows = [];
+    if (textoUtil(im.tipo)) rows.push({ label: 'Tipo', value: im.tipo });
+    if (textoUtil(im.sipra)) rows.push({ label: 'SIPRA', value: im.sipra });
+    if (textoUtil(im.status)) rows.push({ label: 'Status', value: im.status });
+    if (Number.isFinite(Number(im.familias))) {
+      rows.push({ label: 'Famílias', value: String(im.familias) });
+    }
+    if (Number.isFinite(Number(im.modFiscais))) {
+      rows.push({ label: 'Módulos fiscais', value: String(im.modFiscais).replace('.', ',') });
+    }
+    if (Number.isFinite(Number(im.areaHa)) && Number(im.areaHa) > 0) {
+      rows.push({ label: 'Área registrada', value: formatHa(im.areaHa) });
+    }
+    if (textoUtil(im.dtAssenta)) rows.push({ label: 'Data do assentamento', value: im.dtAssenta });
+    if (textoUtil(im.municipio) && !textoUtil(im.tipo)) {
+      // município já costuma ir no quadro geral; para assentamento reforça no detalhe
+    } else if (textoUtil(im.municipio) && textoUtil(im.tipo)) {
+      rows.push({ label: 'Município da propriedade', value: im.municipio });
+    }
+    return rows;
+  }
   return [];
 }
 
 function drawPropriedadesTable(doc, y, imoveis) {
   const list = Array.isArray(imoveis) ? imoveis : [];
   if (!list.length) return y;
-  const title = list.length === 1 ? 'Propriedade' : 'Propriedades';
-  const temPct = list.some((im) => Number.isFinite(Number(im.pct)));
+  const isAssent = list.length === 1 && (
+    String(list[0].tipo || '').toLowerCase() === 'assentamento'
+    || String(list[0].source || '') === 'assentamento-car'
+  );
+  const title = list.length === 1
+    ? (isAssent ? 'Propriedade (assentamento)' : 'Propriedade')
+    : 'Propriedades';
+  const temPct = list.some((im) => Number.isFinite(Number(im.pct)) && Number(im.pct) < 99.5);
   const cols = [
     { label: 'Propriedade', w: W_NOME_PROPRIEDADE },
     { label: 'CAR/CEFIR' },
@@ -842,14 +872,40 @@ async function buildConsultaPdf(raw = {}) {
   if (municipiosShape.length) {
     payload.mun = municipiosShape.join(', ');
   }
-  try {
-    imoveisCadastro = await identificarImoveisCadastrais({
-      aoiGeom: payload.aoi,
-      point: consultaPt,
-      isPoint: !!payload.showBuffer,
-    });
-  } catch (e) {
-    console.error('Falha ao identificar imóvel rural no laudo:', e.message || e);
+  if (raw.selectedImovel?.geometry) {
+    // CAR/assentamento escolhido pelo usuário = a propriedade do laudo (não vizinhos).
+    const sel = raw.selectedImovel;
+    imoveisCadastro = [{
+      nome: sel.nome || 'Propriedade selecionada',
+      car: sel.car || raw.car || raw.propriedadeCar || '',
+      ide: sel.ide || '',
+      municipio: sel.municipio || '',
+      areaHa: Number.isFinite(Number(sel.areaHa)) ? Number(sel.areaHa) : null,
+      pct: Number.isFinite(Number(sel.pct)) ? Number(sel.pct) : 100,
+      geometry: sel.geometry,
+      source: sel.source || '',
+      tipo: sel.tipo || (String(sel.source || '') === 'assentamento-car' ? 'Assentamento' : ''),
+      sipra: sel.sipra || '',
+      status: sel.status || '',
+      familias: sel.familias,
+      modFiscais: sel.modFiscais,
+      dtAssenta: sel.dtAssenta || '',
+    }];
+  } else {
+    try {
+      imoveisCadastro = await identificarImoveisCadastrais({
+        aoiGeom: payload.aoi,
+        point: consultaPt,
+        isPoint: !!payload.showBuffer,
+      });
+    } catch (e) {
+      console.error('Falha ao identificar imóvel rural no laudo:', e.message || e);
+    }
+    const carAlvo = String(raw.car || raw.propriedadeCar || '').trim().toLowerCase();
+    if (carAlvo && imoveisCadastro.length > 1) {
+      const soEsse = imoveisCadastro.filter((im) => String(im.car || '').trim().toLowerCase() === carAlvo);
+      if (soEsse.length) imoveisCadastro = soEsse;
+    }
   }
   if (!municipiosShape.length && !textoUtil(payload.mun)) {
     const dosImoveis = municipiosDosImoveis(imoveisCadastro);
