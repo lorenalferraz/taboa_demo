@@ -77,5 +77,8 @@ export function buildConsultaPdfPayload(opts) {
     propriedadeHa: Number.isFinite(Number(opts.propriedadeHa)) && Number(opts.propriedadeHa) > 0
       ? Number(opts.propriedadeHa)
       : null,
+    propriedadeGeom: opts.propriedadeGeom || null,
+    propriedadeCar: String(opts.propriedadeCar || '').trim(),
+    hasPropriedadeRef: !!opts.hasPropriedadeRef,
   };
 }

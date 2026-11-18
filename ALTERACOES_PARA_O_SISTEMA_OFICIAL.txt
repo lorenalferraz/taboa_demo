@@ -941,6 +941,44 @@ Como conferir
   PA Luzitânia (assentamento). Ao escolher, o mapa vai até o polígono.
 
 
+34. CAR como referência: estilo amarelo sem fundo e análise na área desenhada — 18/11/2026
+-----------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Ao buscar e selecionar um CAR, o mapa continua filtrando e dando zoom
+    na propriedade. O limite fica no amarelo atual, com borda mais grossa
+    e fundo transparente.
+  - Depois de selecionar o CAR, ainda é possível inserir ponto ou desenhar
+    polígono. Se a pessoa fizer isso, o cruzamento (PRODES, restrições) e
+    o relatório usam essa área inserida/desenhada; o CAR fica só como
+    referência da propriedade. Se não inserir nada, a análise continua
+    sendo da propriedade inteira.
+  - No PDF, quando há área inserida/desenhada com CAR de referência: o
+    primeiro mapa é da área analisada; abaixo dele há um segundo mapa da
+    propriedade (CAR), podendo mostrar alertas na propriedade mesmo quando
+    a área do projeto está limpa.
+  - Versão da API: mapa-v39.
+
+Por quê
+  O CAR localiza a propriedade; o projeto muitas vezes ocupa só uma parte
+  dela. A análise deve refletir a área do projeto quando ela for informada.
+
+Arquivos
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/taboa/lib/consultaReport.js
+  - frontend/src/taboa/lib/localMapLayers.js
+  - frontend/src/taboa/bootstrap.js
+  - frontend/src/App.jsx
+  - backend/relatorio/consultaPdf.js
+  - backend/server.js
+
+Como conferir
+  - Buscar um CAR: zoom na propriedade, contorno amarelo sem preenchimento.
+  - Sem desenhar: Consultar analisa a propriedade.
+  - Com CAR + polígono/ponto: Consultar analisa só a área inserida; o PDF
+    traz o mapa da área e, abaixo, o mapa da propriedade.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

@@ -1269,8 +1269,14 @@ export function bootstrapTaboa() {
           clearMunicipioFromMap({ keepLayers: true });
         },
         onImovelSelected: (feat) => {
-          const car = String(feat?.properties?.NUMERO_CAR || '').trim();
-          setImoveisRuraisCarFilter(car || '', { enable: !!car });
+          const car = String(
+            feat?.properties?.NUMERO_CAR
+            || feat?.properties?.numero_car
+            || '',
+          ).trim();
+          // Só filtra a camada Imóveis rurais quando o CAR vem dela.
+          const isRural = !!(feat?.properties?.NUMERO_CAR || feat?.properties?.DENOMINACA);
+          setImoveisRuraisCarFilter(isRural ? car : '', { enable: isRural && !!car });
         },
         onImovelCleared: () => {
           setImoveisRuraisCarFilter('', { enable: false });

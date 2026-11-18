@@ -485,8 +485,10 @@ export default function App() {
                 <h3>Município e CAR são atalhos</h3>
                 <p>
                   Se quiser, selecione o município para filtrar a lista e dar zoom no território.
-                  Também pode buscar o imóvel pelo CAR/CEFIR para o mapa ir até a propriedade.
-                  Esses campos ajudam a localizar, mas a consulta em si usa a área vetorial inserida.
+                  Também pode buscar o imóvel pelo CAR/CEFIR: o mapa filtra e dá zoom na propriedade
+                  (contorno amarelo). O CAR fica como referência; você pode consultar a propriedade
+                  inteira ou, depois, inserir um ponto ou desenhar o polígono da área do projeto —
+                  nesse caso a análise e o relatório usam só essa área inserida.
                 </p>
               </div>
             </li>

@@ -581,18 +581,33 @@ async function refreshViewportLayer(cfg) {
   const bbox = mapBbox(hostMap);
   if (!bbox) return;
   let gj = await fetchGeojsonBbox(cfg.geojson, bbox);
-  if (cfg.id === 'imoveis_rurais' && imoveisCarFilter && gj?.features) {
+  const carFilterOn = cfg.id === 'imoveis_rurais' && !!imoveisCarFilter;
+  if (carFilterOn && gj?.features) {
     const key = imoveisCarFilter.toLowerCase();
     gj = {
       ...gj,
       features: gj.features.filter((f) => String(f.properties?.NUMERO_CAR || '').trim().toLowerCase() === key),
     };
   }
+  /** CAR filtrado: mesmo amarelo, borda mais grossa, fundo transparente. */
+  const styleFor = () => {
+    if (carFilterOn) {
+      return {
+        color: '#eab308',
+        weight: 3.5,
+        opacity: 1,
+        fill: false,
+        fillOpacity: 0,
+        interactive: true,
+      };
+    }
+    return { ...leafletStyle(cfg.style), interactive: true };
+  };
   let entry = remoteWmsEntries.find((e) => e.id === id);
   if (!entry) {
     const lyr = L.geoJSON(gj || { type: 'FeatureCollection', features: [] }, {
       renderer: hostMap ? rendererFor(hostMap, cfg.id) : undefined,
-      style: () => ({ ...leafletStyle(cfg.style), interactive: true }),
+      style: styleFor,
       interactive: true,
       onEachFeature: (feat, layer) => {
         bindFeaturePopup(layer, cfg.buildPopup(feat?.properties || {}, escHtml));
@@ -604,6 +619,7 @@ async function refreshViewportLayer(cfg) {
   } else {
     entry.layer.clearLayers();
     if (gj?.features?.length) entry.layer.addData(gj);
+    if (typeof entry.layer.setStyle === 'function') entry.layer.setStyle(styleFor());
   }
   applyLayerVisibility(id);
 }

@@ -166,6 +166,10 @@ function preparePayload(raw = {}) {
     point: raw.point,
     nome: txt(raw.nome),
     cpf: txt(raw.cpf),
+    car: txt(raw.car),
+    propriedadeCar: txt(raw.propriedadeCar || raw.car),
+    propriedadeGeom: raw.propriedadeGeom || null,
+    hasPropriedadeRef: !!raw.hasPropriedadeRef && !!raw.propriedadeGeom,
   };
 }
 
@@ -745,8 +749,7 @@ function drawMapLegend(doc, y, legend) {
   return y + rowH + 4;
 }
 
-function drawMapa(doc, y, mapImg) {
-  const title = 'RESULTADO VISUAL DA CONSULTA';
+function drawMapa(doc, y, mapImg, title = 'RESULTADO VISUAL DA CONSULTA') {
   const titleH = 22;
   if (mapImg?.png) {
     const side = 20;
@@ -846,33 +849,36 @@ async function buildConsultaPdf(raw = {}) {
   } catch (e) {
     console.error('Falha ao identificar RL/APP do imóvel no laudo:', e.message || e);
   }
+  const hasPropRef = payload.hasPropriedadeRef;
+  let mapPropImg = null;
   try {
     mapImg = await renderSatelliteMap({
       aoi: payload.aoi,
       point: payload.point,
-      frameGeoms: imoveisNoMapa.map((im) => im.geometry),
+      // Com CAR só como referência, o 1º mapa foca na área analisada (ponto/polígono).
+      frameGeoms: hasPropRef ? [] : imoveisNoMapa.map((im) => im.geometry),
       overlays: [
-        ...imoveisNoMapa.map((im) => ({
+        ...(hasPropRef ? [] : imoveisNoMapa.map((im) => ({
           id: 'imovel_rural',
           legend: 'Imóvel rural',
           fill: '#facc15',
           stroke: '#ca8a04',
           geom: im.geometry,
-        })),
-        ...(rlAppImovel.rl || []).map((f) => ({
+        }))),
+        ...(hasPropRef ? [] : (rlAppImovel.rl || []).map((f) => ({
           id: 'reserva_legal',
           legend: 'Reserva legal do imóvel',
           fill: '#86efac',
           stroke: '#166534',
           geom: f.geometry,
-        })),
-        ...(rlAppImovel.app || []).map((f) => ({
+        }))),
+        ...(hasPropRef ? [] : (rlAppImovel.app || []).map((f) => ({
           id: 'app',
           legend: 'APP do imóvel',
           fill: '#67e8f9',
           stroke: '#0e7490',
           geom: f.geometry,
-        })),
+        }))),
         ...(prodesCruzamento.itens || []).slice(0, 12).map((it) => ({
           id: 'prodes',
           legend: 'Alertas - PRODES',
@@ -884,7 +890,7 @@ async function buildConsultaPdf(raw = {}) {
           if (!c.hit) return [];
           const jaTemDoImovel = (c.id === 'reserva_legal' && rlAppImovel.rl?.length)
             || (c.id === 'app' && rlAppImovel.app?.length);
-          if (jaTemDoImovel) return [];
+          if (jaTemDoImovel && !hasPropRef) return [];
           if (Array.isArray(c.overlays) && c.overlays.length) return c.overlays;
           return (c.geoms || []).map((geom) => ({
             id: c.id,
@@ -898,6 +904,35 @@ async function buildConsultaPdf(raw = {}) {
     });
   } catch (e) {
     console.error('Falha ao montar mapa de satélite do relatório:', e.message || e);
+  }
+  if (hasPropRef) {
+    try {
+      let prodesProp = { itens: [] };
+      try {
+        prodesProp = await cruzarProdes(payload.propriedadeGeom);
+      } catch (_) {}
+      mapPropImg = await renderSatelliteMap({
+        aoi: payload.propriedadeGeom,
+        overlays: [
+          {
+            id: 'imovel_ref',
+            legend: 'Propriedade (CAR)',
+            fill: '#facc15',
+            stroke: '#eab308',
+            geom: payload.propriedadeGeom,
+          },
+          ...(prodesProp.itens || []).slice(0, 12).map((it) => ({
+            id: 'prodes',
+            legend: 'Alertas - PRODES na propriedade',
+            fill: '#ef4444',
+            stroke: '#ef4444',
+            geom: it.geometry,
+          })),
+        ],
+      });
+    } catch (e) {
+      console.error('Falha ao montar mapa da propriedade de referência:', e.message || e);
+    }
   }
 
   return new Promise((resolve, reject) => {
@@ -931,6 +966,13 @@ async function buildConsultaPdf(raw = {}) {
       { label: 'Município / UF', value: payload.mun },
       { label: 'Área de análise', value: payload.areaHa },
     ];
+    if (payload.hasPropriedadeRef && textoUtil(payload.propriedadeCar)) {
+      cadastro.push({
+        label: 'CAR de referência',
+        value: payload.propriedadeCar,
+        fullWidth: true,
+      });
+    }
     cadastro.push(...linhasImoveisCadastrais(imoveisCadastro));
     y = drawInfoTable(doc, y, cadastro);
     if ((imoveisCadastro || []).length) {
@@ -963,7 +1005,24 @@ async function buildConsultaPdf(raw = {}) {
     y = drawSectionTitle(doc, y, 'RESTRIÇÕES LEGAIS ANALISADAS');
     y = drawCrossingCards(doc, y, cruzamentos);
 
-    y = drawMapa(doc, y, mapImg);
+    y = drawMapa(
+      doc,
+      y,
+      mapImg,
+      payload.hasPropriedadeRef
+        ? 'RESULTADO VISUAL DA ÁREA ANALISADA'
+        : 'RESULTADO VISUAL DA CONSULTA',
+    );
+    if (payload.hasPropriedadeRef) {
+      y = drawMapa(
+        doc,
+        y,
+        mapPropImg,
+        textoUtil(payload.propriedadeCar)
+          ? `PROPRIEDADE DE REFERÊNCIA (CAR ${payload.propriedadeCar})`
+          : 'PROPRIEDADE DE REFERÊNCIA (CAR)',
+      );
+    }
 
     drawFooter(doc);
     doc.end();

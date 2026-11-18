@@ -13,7 +13,15 @@ import * as turf from '@turf/turf';
 import { FAIXA_BBOX } from './faixaShapeNormalize.js';
 
 const AOI_STYLE = { color: '#0284c7', weight: 2, fillColor: '#38bdf8', fillOpacity: 0.18, interactive: false };
-const IMOVEL_STYLE = { color: '#ca8a04', weight: 2, fillColor: '#facc15', fillOpacity: 0.16, interactive: false };
+/** Limite do CAR de referência: amarelo atual, borda mais grossa, sem preenchimento. */
+const IMOVEL_STYLE = {
+  color: '#eab308',
+  weight: 3.5,
+  opacity: 1,
+  fill: false,
+  fillOpacity: 0,
+  interactive: false,
+};
 const APP_STYLE = { color: '#0e7490', weight: 1.6, fillColor: '#67e8f9', fillOpacity: 0.35, interactive: false };
 const RL_STYLE = { color: '#166534', weight: 1.6, fillColor: '#86efac', fillOpacity: 0.35, interactive: false };
 const DRAW_STYLE = { color: '#0284c7', weight: 2.2, dashArray: '10 7', fill: false, className: 'consulta-draw-line', interactive: false };
@@ -224,6 +232,8 @@ export function setupConsultaTab(ctx) {
 
   /** @type {null | { kind: 'point'|'polygon', feature: object, lat?: number, lng?: number, source: string }} */
   let geometry = null;
+  /** @type {null | { feature: object, car: string, source: string }} */
+  let propertyRef = null;
   let mapMode = 'idle';
   let drawLatLngs = [];
   let drawCursor = null;
@@ -234,6 +244,19 @@ export function setupConsultaTab(ctx) {
   let runGeneration = 0;
   let lastPdfPayload = null;
   let pinIcon = null;
+
+  function isCarSource(source) {
+    return source === 'imovel-car' || source === 'assentamento-car';
+  }
+
+  function geometryIsPropertyRef() {
+    return !!(geometry && propertyRef && isCarSource(geometry.source));
+  }
+
+  function compactPropertyGeom() {
+    if (!propertyRef?.feature) return null;
+    return compactGeom(propertyRef.feature);
+  }
 
   function getPinIcon() {
     if (!pinIcon) {
@@ -373,6 +396,14 @@ export function setupConsultaTab(ctx) {
   function updateGeomStatus() {
     if (!geomStatus) return;
     geomStatus.classList.remove('is-error', 'is-ok', 'is-loading');
+    if (!geometry && propertyRef) {
+      geomStatus.hidden = false;
+      geomStatus.classList.add('is-ok');
+      geomStatus.textContent = propertyRef.car
+        ? `Propriedade de referência (CAR ${propertyRef.car}). Insira um ponto ou desenhe a área do projeto, ou consulte a propriedade inteira.`
+        : 'Propriedade de referência no mapa. Insira um ponto ou desenhe a área do projeto, ou consulte a propriedade inteira.';
+      return;
+    }
     if (!geometry) {
       geomStatus.hidden = true;
       geomStatus.textContent = '';
@@ -399,37 +430,56 @@ export function setupConsultaTab(ctx) {
     const ha = Number.isFinite(built.areaHa) && built.areaHa > 0
       ? formatHaPtBr(built.areaHa, 2)
       : '';
+    const refNote = propertyRef && !geometryIsPropertyRef()
+      ? ' · CAR só como referência da propriedade'
+      : '';
     if (geometry.kind === 'polygon' && ha) {
-      geomStatus.textContent = `Área enviada: ${ha}`;
+      geomStatus.textContent = `Área enviada: ${ha}${refNote}`;
       return;
     }
     const extra = built.mode === 'buffer' && built.bufferMeters
       ? ` · buffer de ${formatMetros(built.bufferMeters)}`
       : '';
     geomStatus.textContent = ha
-      ? `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra} · ${ha}`
-      : `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra}.`;
+      ? `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra} · ${ha}${refNote}`
+      : `${kindLabelPt(geometry.kind)} (${sourceLabelPt(geometry.source)})${extra}${refNote}.`;
   }
 
   function paintPreview({ fly = false } = {}) {
     clearPreview();
     const map = liveMap();
-    if (!map || !geometry) return;
-    const built = aoiOf(geometry);
-    if (!built.ok) return;
+    if (!map) return;
     const layers = [];
-    layers.push(L.geoJSON(built.aoi, { style: () => AOI_STYLE, interactive: false }));
-    if (geometry.kind === 'point' && Number.isFinite(geometry.lat) && Number.isFinite(geometry.lng)) {
-      layers.push(L.marker([geometry.lat, geometry.lng], { icon: getPinIcon(), interactive: false }));
+    let focusLayer = null;
+    if (propertyRef?.feature) {
+      const propLayer = L.geoJSON(propertyRef.feature, { style: () => IMOVEL_STYLE, interactive: false });
+      layers.push(propLayer);
+      if (geometryIsPropertyRef()) focusLayer = propLayer;
     }
+    if (geometry && !geometryIsPropertyRef()) {
+      const built = aoiOf(geometry);
+      if (built.ok) {
+        const aoiLayer = L.geoJSON(built.aoi, { style: () => AOI_STYLE, interactive: false });
+        layers.push(aoiLayer);
+        focusLayer = aoiLayer;
+        if (geometry.kind === 'point' && Number.isFinite(geometry.lat) && Number.isFinite(geometry.lng)) {
+          layers.push(L.marker([geometry.lat, geometry.lng], { icon: getPinIcon(), interactive: false }));
+        }
+      }
+    } else if (geometry && geometryIsPropertyRef()) {
+      // Análise = propriedade: só o contorno amarelo (sem azul por cima).
+      focusLayer = layers[0] || null;
+    }
+    if (!layers.length) return;
     previewGroup = L.layerGroup(layers).addTo(map);
     try {
-      const b = layers[0].getBounds?.();
+      const b = (focusLayer || layers[0]).getBounds?.();
       if (!b?.isValid()) return;
       if (fly) {
         try { map.stop(); } catch (_) {}
         if (
-          geometry.kind === 'point'
+          geometry?.kind === 'point'
+          && !geometryIsPropertyRef()
           && Number.isFinite(geometry.lat)
           && Number.isFinite(geometry.lng)
           && typeof map.flyTo === 'function'
@@ -447,6 +497,12 @@ export function setupConsultaTab(ctx) {
     } catch (_) {}
   }
 
+  function setPropertyRef(feature, source, car) {
+    propertyRef = feature?.geometry
+      ? { feature, source, car: String(car || '').trim() }
+      : null;
+  }
+
   function setPointGeometry(lat, lng, source) {
     geometry = {
       kind: 'point',
@@ -454,6 +510,7 @@ export function setupConsultaTab(ctx) {
       lng,
       source,
       feature: { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [lng, lat] } },
+      car: propertyRef?.car || '',
     };
     if (latIn) latIn.value = fmtCoord(lat);
     if (lngIn) lngIn.value = fmtCoord(lng);
@@ -462,11 +519,19 @@ export function setupConsultaTab(ctx) {
   }
 
   function setPolygonGeometry(feature, source, extra = {}) {
-    geometry = { kind: 'polygon', feature, source, ...extra };
+    geometry = {
+      kind: 'polygon',
+      feature,
+      source,
+      car: propertyRef?.car || '',
+      ...extra,
+    };
     if (latIn) latIn.value = '';
     if (lngIn) lngIn.value = '';
     updateGeomStatus();
-    paintPreview({ fly: source === 'map-polygon' || source === 'imovel-car' || source === 'assentamento-car' });
+    paintPreview({
+      fly: source === 'map-polygon' || isCarSource(source),
+    });
   }
 
   function applyCoordsFromInputs() {
@@ -618,7 +683,12 @@ export function setupConsultaTab(ctx) {
     setKmlLabel('');
     setKmlError('');
     setPolygonGeometry(feature, 'map-polygon');
-    setStatus('Polígono definido. Clique em Consultar para cruzar com o PRODES.', false);
+    setStatus(
+      propertyRef
+        ? 'Polígono definido (área do projeto). O CAR permanece só como referência. Clique em Consultar.'
+        : 'Polígono definido. Clique em Consultar para cruzar com o PRODES.',
+      false,
+    );
   }
 
   function sameVertex(a, b) {
@@ -687,10 +757,11 @@ export function setupConsultaTab(ctx) {
       setPointGeometry(latlng.lat, latlng.lng, 'map-point');
       cancelMapMode();
       const built = aoiOf(geometry);
+      const refHint = propertyRef ? ' O CAR permanece só como referência da propriedade.' : '';
       setStatus(
         built.ok
-          ? `Ponto inserido. Buffer de ${formatMetros(built.bufferMeters)}. Clique em Consultar.`
-          : 'Ponto inserido. Informe o tamanho da propriedade em hectares para calcular o buffer.',
+          ? `Ponto inserido. Buffer de ${formatMetros(built.bufferMeters)}. Clique em Consultar.${refHint}`
+          : `Ponto inserido. Informe o tamanho da propriedade em hectares para calcular o buffer.${refHint}`,
         !built.ok,
       );
       return;
@@ -745,6 +816,10 @@ export function setupConsultaTab(ctx) {
         } catch (_) {}
       }
 
+      const carRef = propertyRef?.car || geometry.car || (imovelIn?.dataset?.car || '').trim()
+        || (imovelIn?.value || '').trim();
+      const propriedadeGeom = compactPropertyGeom();
+      const analysisUsesProperty = geometryIsPropertyRef();
       lastPdfPayload = buildConsultaPdfPayload({
         source: geometry.source,
         kind: geometry.kind,
@@ -759,7 +834,10 @@ export function setupConsultaTab(ctx) {
           ? [geometry.lng, geometry.lat]
           : null,
         ...cadastroPessoa(),
-        car: geometry.car || (imovelIn?.value || '').trim(),
+        car: carRef,
+        propriedadeGeom: analysisUsesProperty ? null : propriedadeGeom,
+        propriedadeCar: analysisUsesProperty ? '' : (propertyRef?.car || ''),
+        hasPropriedadeRef: !!(propertyRef && !analysisUsesProperty),
       });
       resultEl.innerHTML = buildConsultaReportHtml();
       bindPdfButton(resultEl);
@@ -772,8 +850,17 @@ export function setupConsultaTab(ctx) {
         territorio = await findTerritorioConsulta(built, geometry);
       } catch (_) {}
       if (myGen !== runGeneration) return;
-      const layers = [L.geoJSON(built.aoi, { style: () => AOI_STYLE })];
+      const layers = [];
+      if (propertyRef?.feature) {
+        layers.push(L.geoJSON(propertyRef.feature, { style: () => IMOVEL_STYLE }));
+      }
+      if (!analysisUsesProperty) {
+        layers.push(L.geoJSON(built.aoi, { style: () => AOI_STYLE }));
+      }
       territorio.imoveis.forEach((feat) => {
+        // Evita desenhar de novo o mesmo CAR já mostrado como referência.
+        const car = String(feat.properties?.NUMERO_CAR || feat.properties?.numero_car || '').trim();
+        if (propertyRef?.car && car && car.toLowerCase() === propertyRef.car.toLowerCase()) return;
         layers.push(L.geoJSON(feat, { style: () => IMOVEL_STYLE }));
       });
       territorio.rls.forEach((feat) => {
@@ -791,15 +878,10 @@ export function setupConsultaTab(ctx) {
       if (map) {
         resultGroup = L.layerGroup(layers).addTo(map);
         try {
-          const frameFeats = [
-            ...territorio.imoveis,
-            ...territorio.rls,
-            ...territorio.apps,
-          ];
-          const frame = frameFeats.length
-            ? L.geoJSON({ type: 'FeatureCollection', features: frameFeats })
+          const focus = analysisUsesProperty && propertyRef?.feature
+            ? L.geoJSON(propertyRef.feature)
             : L.geoJSON(built.aoi);
-          const b = frame.getBounds();
+          const b = focus.getBounds();
           if (b.isValid()) map.fitBounds(b, { maxZoom: 17, padding: [28, 28] });
         } catch (_) {}
       }
@@ -818,6 +900,7 @@ export function setupConsultaTab(ctx) {
   function clearAll() {
     runGeneration += 1;
     geometry = null;
+    propertyRef = null;
     lastPdfPayload = null;
     cancelMapMode();
     clearPreview();
@@ -975,12 +1058,15 @@ export function setupConsultaTab(ctx) {
         }
         cancelMapMode();
         const fromAssent = item.source === 'assentamento-car' || String(item.i).startsWith('a:');
-        setPolygonGeometry(feat, fromAssent ? 'assentamento-car' : 'imovel-car', { car: item.car || '' });
+        const source = fromAssent ? 'assentamento-car' : 'imovel-car';
+        const car = item.car || '';
+        setPropertyRef(feat, source, car);
+        setPolygonGeometry(feat, source, { car });
         if (typeof onImovelSelected === 'function') onImovelSelected(feat);
         setStatus(
           fromAssent
-            ? 'Assentamento (CAR) selecionado. Clique em Consultar.'
-            : 'Imóvel rural selecionado. Clique em Consultar.',
+            ? 'Assentamento (CAR) no mapa como referência. Pode consultar a propriedade ou inserir ponto/desenhar a área do projeto.'
+            : 'CAR no mapa como referência. Pode consultar a propriedade ou inserir ponto/desenhar a área do projeto.',
           false,
         );
       } catch (e) {
@@ -1063,8 +1149,9 @@ export function setupConsultaTab(ctx) {
         input.value = '';
         delete input.dataset.index;
         delete input.dataset.car;
-        if (geometry?.source === 'imovel-car' || geometry?.source === 'assentamento-car') {
+        if (isCarSource(geometry?.source) || propertyRef) {
           geometry = null;
+          propertyRef = null;
           clearPreview();
           updateGeomStatus();
         }
