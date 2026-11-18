@@ -238,10 +238,23 @@ function ensureSpace(doc, y, need) {
   return ny;
 }
 
-function drawSectionTitle(doc, y, title) {
+function drawSectionTitle(doc, y, title, note = '') {
   y = ensureSpace(doc, y, 26);
-  doc.fillColor(NAVY).font(doc._sansBold).fontSize(10)
-    .text(title, MARGIN, y, { lineBreak: false });
+  doc.fillColor(NAVY).font(doc._sansBold).fontSize(10);
+  const titleW = Math.min(CONTENT_W, doc.widthOfString(String(title || '')));
+  doc.text(title, MARGIN, y, { lineBreak: false });
+  const noteText = String(note || '').trim();
+  if (noteText) {
+    const gap = 6;
+    const noteX = MARGIN + titleW + gap;
+    const noteW = Math.max(40, CONTENT_W - titleW - gap);
+    doc.fillColor('#15803d').font(doc._sans).fontSize(7.5)
+      .text(`— ${noteText}`, noteX, y + 1.5, {
+        width: noteW,
+        lineBreak: false,
+        ellipsis: true,
+      });
+  }
   doc.moveTo(MARGIN, y + 13).lineTo(PAGE_W - MARGIN, y + 13)
     .strokeColor(GOLD).lineWidth(1.15).stroke();
   syncCursor(doc, y + 20);
@@ -749,7 +762,7 @@ function drawMapLegend(doc, y, legend) {
   return y + rowH + 4;
 }
 
-function drawMapa(doc, y, mapImg, title = 'RESULTADO VISUAL DA CONSULTA') {
+function drawMapa(doc, y, mapImg, title = 'RESULTADO VISUAL DA CONSULTA', titleNote = '') {
   const titleH = 22;
   if (mapImg?.png) {
     const side = 20;
@@ -771,7 +784,7 @@ function drawMapa(doc, y, mapImg, title = 'RESULTADO VISUAL DA CONSULTA') {
       imgH *= scale;
       imgW *= scale;
     }
-    y = drawSectionTitle(doc, y, title);
+    y = drawSectionTitle(doc, y, title, titleNote);
     syncCursor(doc, y);
     const imgX = MARGIN + side + (CONTENT_W - side * 2 - imgW) / 2;
     const imgY = y + bandTop;
@@ -789,7 +802,7 @@ function drawMapa(doc, y, mapImg, title = 'RESULTADO VISUAL DA CONSULTA') {
     syncCursor(doc, y);
     return y;
   }
-  y = drawSectionTitle(doc, y, title);
+  y = drawSectionTitle(doc, y, title, titleNote);
   doc.fillColor(MUTED).font(doc._sans).fontSize(9)
     .text('Mapa indisponível para esta consulta.', MARGIN, y);
   return y + 16;
@@ -913,14 +926,13 @@ async function buildConsultaPdf(raw = {}) {
       } catch (_) {}
       mapPropImg = await renderSatelliteMap({
         aoi: payload.propriedadeGeom,
+        // Propriedade em amarelo por baixo; área analisada em azul por cima.
+        aoiFirst: true,
+        aoiFill: '#facc15',
+        aoiStroke: '#eab308',
+        aoiLabel: 'Propriedade (CAR)',
+        point: payload.point,
         overlays: [
-          {
-            id: 'imovel_ref',
-            legend: 'Propriedade (CAR)',
-            fill: '#facc15',
-            stroke: '#eab308',
-            geom: payload.propriedadeGeom,
-          },
           ...(prodesProp.itens || []).slice(0, 12).map((it) => ({
             id: 'prodes',
             legend: 'Alertas - PRODES na propriedade',
@@ -928,6 +940,13 @@ async function buildConsultaPdf(raw = {}) {
             stroke: '#ef4444',
             geom: it.geometry,
           })),
+          {
+            id: 'area_analise',
+            legend: 'Área de análise',
+            fill: '#38bdf8',
+            stroke: '#0369a1',
+            geom: payload.aoi,
+          },
         ],
       });
     } catch (e) {
@@ -1005,6 +1024,9 @@ async function buildConsultaPdf(raw = {}) {
     y = drawSectionTitle(doc, y, 'RESTRIÇÕES LEGAIS ANALISADAS');
     y = drawCrossingCards(doc, y, cruzamentos);
 
+    const semRestricoesLegais = Array.isArray(cruzamentos)
+      && cruzamentos.length > 0
+      && cruzamentos.every((c) => !c?.hit);
     y = drawMapa(
       doc,
       y,
@@ -1012,6 +1034,9 @@ async function buildConsultaPdf(raw = {}) {
       payload.hasPropriedadeRef
         ? 'RESULTADO VISUAL DA ÁREA ANALISADA'
         : 'RESULTADO VISUAL DA CONSULTA',
+      payload.hasPropriedadeRef && semRestricoesLegais
+        ? 'nenhuma sobreposição com restrições legais'
+        : '',
     );
     if (payload.hasPropriedadeRef) {
       y = drawMapa(

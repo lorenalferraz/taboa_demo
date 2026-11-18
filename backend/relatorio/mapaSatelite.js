@@ -484,10 +484,15 @@ async function renderSatelliteMap(opts = {}) {
       legend.push({ fill, stroke, label });
     }
   };
+  const aoiFill = opts.aoiFill || '#38bdf8';
+  const aoiStroke = opts.aoiStroke || '#0369a1';
+  const aoiLabel = opts.aoiLabel || 'Área de análise';
+  const aoiFirst = opts.aoiFirst === true;
+  if (aoiFirst) push(aoi, aoiFill, aoiStroke, aoiLabel);
   for (const o of overlays) {
     push(o.geom, o.fill || '#f59e0b', o.stroke || '#b45309', o.legend || o.id);
   }
-  push(aoi, '#38bdf8', '#0369a1', 'Área de análise');
+  if (!aoiFirst) push(aoi, aoiFill, aoiStroke, aoiLabel);
   let pin = null;
   if (opts.point && Number.isFinite(Number(opts.point[0])) && Number.isFinite(Number(opts.point[1]))) {
     const [x, y] = toPx(Number(opts.point[0]), Number(opts.point[1]));

@@ -979,6 +979,35 @@ Como conferir
     traz o mapa da área e, abaixo, o mapa da propriedade.
 
 
+35. PDF: nota “sem restrições” e propriedade amarela no 2º mapa — 18/11/2026
+-----------------------------------------------------------------------------
+
+O que passou a valer
+  - Em "RESULTADO VISUAL DA ÁREA ANALISADA", se não houver sobreposição com
+    restrições legais, aparece ao lado: "— nenhuma sobreposição com
+    restrições legais".
+  - No mapa da propriedade de referência, o limite do CAR fica amarelo; o
+    azul fica só na área analisada (desenhada/inserida), que também aparece
+    nesse mapa. Antes a propriedade saía azul porque o contorno padrão da
+    área de análise era aplicado em cima do CAR.
+  - Versão da API: mapa-v40.
+
+Por quê
+  Diferenciar no laudo a área do projeto (azul) da propriedade de
+  referência (amarelo) e destacar quando a área analisada está limpa de
+  restrições legais.
+
+Arquivos
+  - backend/relatorio/consultaPdf.js
+  - backend/relatorio/mapaSatelite.js
+  - backend/server.js
+
+Como conferir
+  Consultar com CAR + polígono sem restrições: o 1º mapa traz a nota ao
+  lado do título; o 2º mapa mostra a propriedade em amarelo e a área
+  analisada em azul.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
