@@ -897,7 +897,32 @@ export function setupConsultaTab(ctx) {
     }
   }
 
+  function clearDrawnAreaKeepProperty() {
+    runGeneration += 1;
+    lastPdfPayload = null;
+    cancelMapMode();
+    clearResultLayers();
+    if (latIn) latIn.value = '';
+    if (lngIn) lngIn.value = '';
+    if (kmlIn) kmlIn.value = '';
+    setKmlLabel('');
+    setKmlError('');
+    resultEl.hidden = true;
+    resultEl.innerHTML = '';
+    // Volta a área de análise para a propriedade selecionada e dá zoom nela.
+    setPolygonGeometry(propertyRef.feature, propertyRef.source, { car: propertyRef.car || '' });
+    setStatus(
+      'Ponto/desenho removido. A propriedade (CAR) continua selecionada.',
+      false,
+    );
+  }
+
   function clearAll() {
+    // Com CAR + ponto/desenho: Limpar tira só a área inserida e volta o zoom à propriedade.
+    if (propertyRef?.feature && geometry && !geometryIsPropertyRef()) {
+      clearDrawnAreaKeepProperty();
+      return;
+    }
     runGeneration += 1;
     geometry = null;
     propertyRef = null;

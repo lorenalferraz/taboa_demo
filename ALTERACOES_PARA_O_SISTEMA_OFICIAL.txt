@@ -1008,6 +1008,29 @@ Como conferir
   analisada em azul.
 
 
+36. Limpar com CAR: remove só o ponto/desenho e volta o zoom à propriedade — 18/11/2026
+---------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Com propriedade (CAR) selecionada e um ponto ou polígono inserido por
+    cima, o botão Limpar remove só essa área inserida/desenhada, mantém o
+    CAR selecionado e devolve o zoom à propriedade.
+  - Se não houver ponto/desenho extra (só o CAR, ou nada), Limpar continua
+    esvaziando os campos e a seleção como antes.
+
+Por quê
+  Pedido da usuária: ao ajustar a área do projeto sobre o CAR, Limpar não
+  deve perder a propriedade de referência.
+
+Arquivos
+  - frontend/src/taboa/lib/consultaTab.js
+  - frontend/src/App.jsx
+
+Como conferir
+  Selecionar um CAR, desenhar um polígono, clicar em Limpar: o polígono
+  some, o CAR permanece e o mapa volta o zoom para a propriedade.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:
