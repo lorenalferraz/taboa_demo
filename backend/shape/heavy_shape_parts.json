@@ -1,0 +1,22 @@
+{
+  "app.gpkg": [
+    "app_litoral_sul.gpkg",
+    "app_baixo_sul.gpkg",
+    "app_extremo_sul_parte1de3.gpkg",
+    "app_extremo_sul_parte2de3.gpkg",
+    "app_extremo_sul_parte3de3.gpkg",
+    "app_assentamentos_cefir.gpkg"
+  ],
+  "reserva_legal.gpkg": [
+    "reserva_legal_litoral_sul.gpkg",
+    "reserva_legal_baixo_sul.gpkg",
+    "reserva_legal_extremo_sul_parte1de2.gpkg",
+    "reserva_legal_extremo_sul_parte2de2.gpkg",
+    "reserva_legal_assentamentos_cefir.gpkg"
+  ],
+  "imoveis_rurais.gpkg": [
+    "imoveis_rurais_litoral_sul.gpkg",
+    "imoveis_rurais_baixo_sul.gpkg",
+    "imoveis_rurais_extremo_sul.gpkg"
+  ]
+}

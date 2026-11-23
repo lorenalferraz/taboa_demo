@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const assentamentosApi = require('./assentamentos');
+const { FAIXA_MUNICIPIOS } = require('./municipios');
 
 let shapeLoadError = '';
 function loadShapeModule() {
@@ -220,7 +221,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ok: true,
       service: 'taboa-backend',
-      rev: 'mapa-v41',
+      rev: 'mapa-v43-gpkg-regioes',
       shape: typeof localShape.loadFeaturesByBbox,
       shapeErr: shapeLoadError || undefined,
       ts: Date.now(),
@@ -457,9 +458,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/shape/features?file=app.geojson&bbox=w,s,e,n
+  // GET /api/shape/features?file=app.gpkg&bbox=w,s,e,n
   if (targetPath === '/api/shape/features' && req.method === 'GET') {
-    const allowed = new Set(['app.geojson', 'reserva_legal.geojson', 'imoveis_rurais.geojson']);
+    const allowed = new Set(['app.gpkg', 'reserva_legal.gpkg', 'imoveis_rurais.gpkg']);
     const file = path.basename(String(url.searchParams.get('file') || ''));
     if (!allowed.has(file)) {
       res.writeHead(400, { 'Content-Type': 'application/json', ...CORS_HEADERS });

@@ -1,0 +1,87 @@
+{
+  "app_baixo_sul": [
+    {
+      "file": "app_baixo_sul.gpkg",
+      "features": 15920,
+      "mb": 22.9
+    }
+  ],
+  "app_extremo_sul": [
+    {
+      "file": "app_extremo_sul_parte1de3.gpkg",
+      "features": 11273,
+      "mb": 75.6
+    },
+    {
+      "file": "app_extremo_sul_parte2de3.gpkg",
+      "features": 11274,
+      "mb": 75.6
+    },
+    {
+      "file": "app_extremo_sul_parte3de3.gpkg",
+      "features": 11275,
+      "mb": 75.7
+    }
+  ],
+  "app_litoral_sul": [
+    {
+      "file": "app_litoral_sul.gpkg",
+      "features": 8627,
+      "mb": 32.5
+    }
+  ],
+  "imoveis_rurais_baixo_sul": [
+    {
+      "file": "imoveis_rurais_baixo_sul.gpkg",
+      "features": 42207,
+      "mb": 30.3
+    }
+  ],
+  "imoveis_rurais_extremo_sul": [
+    {
+      "file": "imoveis_rurais_extremo_sul.gpkg",
+      "features": 37940,
+      "mb": 41.8
+    }
+  ],
+  "imoveis_rurais_litoral_sul": [
+    {
+      "file": "imoveis_rurais_litoral_sul.gpkg",
+      "features": 27714,
+      "mb": 22.2
+    }
+  ],
+  "municipios": [
+    {
+      "file": "municipios.gpkg",
+      "features": 62,
+      "mb": 2.3
+    }
+  ],
+  "reserva_legal_baixo_sul": [
+    {
+      "file": "reserva_legal_baixo_sul.gpkg",
+      "features": 37156,
+      "mb": 21.6
+    }
+  ],
+  "reserva_legal_extremo_sul": [
+    {
+      "file": "reserva_legal_extremo_sul_parte1de2.gpkg",
+      "features": 17359,
+      "mb": 78.9
+    },
+    {
+      "file": "reserva_legal_extremo_sul_parte2de2.gpkg",
+      "features": 17361,
+      "mb": 79.0
+    }
+  ],
+  "reserva_legal_litoral_sul": [
+    {
+      "file": "reserva_legal_litoral_sul.gpkg",
+      "features": 26077,
+      "mb": 22.0
+    }
+  ]
+}

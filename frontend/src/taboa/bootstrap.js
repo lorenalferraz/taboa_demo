@@ -501,13 +501,20 @@ export function bootstrapTaboa() {
     function fitMapToFaixaBounds() {
       if (!map || !faixaPlanejamentoGeoJSON?.features?.length) return;
       try {
-        if (!fitMapToFaixaBounds._cached || !fitMapToFaixaBounds._cached.isValid()) {
+        const n = faixaPlanejamentoGeoJSON.features.length;
+        if (
+          !fitMapToFaixaBounds._cached
+          || !fitMapToFaixaBounds._cached.isValid()
+          || fitMapToFaixaBounds._n !== n
+        ) {
           const tmp = L.geoJSON(faixaPlanejamentoGeoJSON);
           fitMapToFaixaBounds._cached = tmp.getBounds();
+          fitMapToFaixaBounds._n = n;
         }
         const b = fitMapToFaixaBounds._cached;
         if (b.isValid()) {
-          map.fitBounds(b, { padding: [28, 28], maxZoom: 10, animate: false });
+          // Área ampliada (3 regiões): enquadra os 62 municípios.
+          map.fitBounds(b, { padding: [28, 28], maxZoom: 9, animate: false });
         }
       } catch (_) {}
     }

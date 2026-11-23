@@ -4,3 +4,12 @@ backend/.cache/
 .DS_Store
 *.log
 .env
+
+# Backup local dos GeoJSON pesados (rollback da migração GPKG)
+backend/shape/.backup_geojson*/
+
+backend/shape/.backup_gpkg_litoral_antigo*/
+backend/shape/.backup_municipios*/
+
+# NDJSON completo (>100 MB) — GitHub bloqueia; o deploy usa features.map.ndjson
+backend/shape/.cache/*/features.ndjson

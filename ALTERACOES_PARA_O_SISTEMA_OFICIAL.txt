@@ -1110,6 +1110,81 @@ Como conferir
   deve normalizar, buscar e mostrar o nome da propriedade.
 
 
+40. Shapes pesados em GeoPackage (imóveis, APP, reserva legal) — 23/11/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - imoveis_rurais, app e reserva_legal passam a ser armazenados como .gpkg
+    (~75 MB no total, antes ~142 MB em GeoJSON).
+  - A API e o Leaflet continuam recebendo GeoJSON FeatureCollection; só a
+    origem no disco mudou. O índice NDJSON/.cache é gerado a partir do GPKG.
+  - Backup local dos GeoJSON em
+    backend/shape/.backup_geojson_2026-11-23/ (gitignore).
+  - Instruções de rollback em backend/shape/ROLLBACK_GPKG.txt.
+
+Por quê
+  Reduzir tamanho dos arquivos no repositório e no deploy sem mudar a
+  visualização do mapa (mesma geometria).
+
+Arquivos
+  - backend/shape/*.gpkg (novos)
+  - backend/indexHeavyGeojson.py (lê .gpkg ou .geojson)
+  - backend/localShapeLoader.js + shape-runtime.txt
+  - backend/server.js, backend/relatorio/cruzamentos.js
+  - frontend/.../localShapeLayers.js, consultaTab.js
+  - backend/shape/ROLLBACK_GPKG.txt
+
+Como conferir
+  Ligar camadas Imóveis / APP / Reserva legal no mapa; buscar um CAR;
+  gerar laudo com cruzamento. Se falhar, seguir ROLLBACK_GPKG.txt.
+
+
+42. Municípios ampliados (62 mun / 3 regiões) via municipios.gpkg — 23/11/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Fonte: backend/shape/municipios.gpkg (62 municípios). O runtime usa
+    municipios.geojson em WGS84 gerado a partir do GPKG (antes só 27 do
+    litoral sul).
+  - alertas.geojson NÃO é usado (MapBiomas removido; alertas = PRODES WFS).
+
+Arquivos
+  - backend/shape/municipios.gpkg, municipios.geojson
+  - backend/faixaShape.js (comentário)
+
+Como conferir
+  Abrir o mapa e ver a malha municipal cobrindo baixo sul e extremo sul.
+
+
+41. Shapes por região (Litoral/Baixo/Extremo Sul) + APP/RL de assentamentos + aviso INPE — 23/11/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Imóveis, APP e reserva legal cobrem as três regiões da faixa (não só
+    litoral sul). Extremo sul permanece em partes (<100 MB) por limite do GitHub.
+  - Incluídos APP e reserva legal de assentamentos (CEFIR) que antes não
+    entravam no cruzamento — só havia o CAR do assentamento.
+  - O índice NDJSON une as partes (reprojetadas para WGS84). A API lógica
+    continua app.gpkg / reserva_legal.gpkg / imoveis_rurais.gpkg.
+  - Ao abrir o sistema, um pop-up avisa que o PRODES/INPE está inacessível
+    (falha da API do órgão, não do Tabôa).
+
+Por quê
+  Expandir a base territorial e deixar claro o bloqueio externo do INPE.
+
+Arquivos
+  - backend/shape/*_{litoral,baixo,extremo}_*.gpkg
+  - backend/shape/app_assentamentos_cefir.gpkg
+  - backend/shape/reserva_legal_assentamentos_cefir.gpkg
+  - backend/shape/heavy_shape_parts.json
+  - backend/indexHeavyGeojson.py, localShapeLoader.js, shape-runtime.txt
+  - frontend/src/App.jsx, frontend/src/styles/app.css
+
+Como conferir
+  Abrir o sistema → ver o aviso do INPE. Ligar Imóveis/APP/RL no extremo sul
+  e no baixo sul. Consultar um assentamento e conferir APP/RL no laudo.
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

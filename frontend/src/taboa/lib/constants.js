@@ -1,8 +1,8 @@
 export const CENTER_BRASIL = [-14.2, -51.9];
 export const ZOOM_BRASIL = 5;
-/** Vista inicial TABOA — faixa Litoral/Baixo/Extremo Sul (BA). */
-export const CENTER_FAIXA_TABOA = [-15.65, -39.45];
-export const ZOOM_FAIXA_TABOA = 8;
+/** Vista inicial TABOA — 62 mun (Litoral + Baixo + Extremo Sul, BA). */
+export const CENTER_FAIXA_TABOA = [-15.63, -39.66];
+export const ZOOM_FAIXA_TABOA = 7;
 
 /** Malha municipal da faixa TABOA (62 municípios). */
 export const SHAPE_FILE = 'municipios.geojson';

@@ -9,8 +9,8 @@ const {
   normMunNome,
 } = require('./municipios');
 
-/** Bbox aproximada da faixa 05/06/07 (BA) — descarta homônimos fora da área. */
-const FAIXA_BBOX = [-40.85, -18.65, -37.15, -12.85];
+/** Bbox da faixa ampliada (62 mun) — descarta homônimos fora da área. */
+const FAIXA_BBOX = [-40.85, -18.55, -38.50, -12.80];
 
 function featureCentroidInFaixa(feat) {
   if (!feat?.geometry) return false;

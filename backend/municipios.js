@@ -2,7 +2,7 @@
 
 /**
  * Relação oficial TABOA — 62 municípios da faixa 05/06/07 (BA).
- * Corresponde a backend/shape/municipios.geojson.
+ * Corresponde a backend/shape/municipios.gpkg (e ao .geojson WGS84 derivado).
  */
 const FAIXA_MUNICIPIOS = [
   { ibge: 2900900, nomMun: 'Almadina', regiao: 'litoral_sul' },

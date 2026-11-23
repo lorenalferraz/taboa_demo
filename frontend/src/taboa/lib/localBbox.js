@@ -2,8 +2,8 @@
  * Bbox efetiva = interseção filtro (UF/município IBGE) ∩ extensão visível do mapa.
  */
 
-/** Zoom mínimo para carregar polígonos locais no cruzamento. */
-export const LOCAL_LAYER_MIN_ZOOM = 8;
+/** Zoom mínimo para carregar polígonos locais no cruzamento (área ampliada = 3 regiões). */
+export const LOCAL_LAYER_MIN_ZOOM = 7;
 export const WFS_MIN_ZOOM = LOCAL_LAYER_MIN_ZOOM;
 
 /**

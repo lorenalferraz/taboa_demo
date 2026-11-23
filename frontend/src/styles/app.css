@@ -755,6 +755,10 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
 }
 .modal-login-title svg { flex-shrink: 0; }
 .modal p { margin: 0 0 24px; font-size: 0.9rem; color: var(--text-muted); text-align: justify; }
+.modal-aviso-inpe { max-width: 480px; }
+.modal-aviso-inpe h2 { color: #9a3412; font-size: 1.15rem; line-height: 1.35; margin-bottom: 12px; }
+.modal-aviso-inpe p { margin: 0 0 12px; }
+.modal-aviso-inpe p:last-of-type { margin-bottom: 0; }
 .modal .form-group { margin-bottom: 16px; }
 .modal .form-group label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
 .modal input {

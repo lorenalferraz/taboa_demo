@@ -1,5 +1,6 @@
 /**
- * Municípios da faixa — lidos de backend/shape/municipios.geojson.
+ * Municípios da faixa — lidos de backend/shape/municipios.geojson
+ * (derivado de municipios.gpkg, 62 mun das 3 regiões).
  */
 import { fetchFaixaGeoJson } from './faixaGeojsonClient.js';
 import { normMunNome } from './faixaMunicipiosCatalog.js';

@@ -137,9 +137,9 @@ async function findTerritorioConsulta(built, geom) {
     return empty;
   }
   const [imoveis, apps, rls] = await Promise.all([
-    fetchShapeInBbox('imoveis_rurais.geojson', bbox),
-    fetchShapeInBbox('app.geojson', bbox),
-    fetchShapeInBbox('reserva_legal.geojson', bbox),
+    fetchShapeInBbox('imoveis_rurais.gpkg', bbox),
+    fetchShapeInBbox('app.gpkg', bbox),
+    fetchShapeInBbox('reserva_legal.gpkg', bbox),
   ]);
   const appsHit = apps.filter((f) => cruzaAoi(f, built.aoi));
   const rlsHit = rls.filter((f) => cruzaAoi(f, built.aoi));
@@ -848,7 +848,19 @@ export function setupConsultaTab(ctx) {
 
     try {
       const aoi = compactGeom(built.aoi);
-      const prodes = await fetchProdesCruzamento(aoi);
+      let prodes = { hit: false, count: 0, areaHa: 0, pct: 0, itens: [] };
+      let prodesError = '';
+      try {
+        updateLoading('Consultando o PRODES (INPE)…');
+        prodes = await fetchProdesCruzamento(aoi);
+      } catch (err) {
+        // Terrabrasilis/WFS fora do ar não pode impedir o resto da consulta (CAR, APP, RL, PDF).
+        prodesError = String(err?.message || err || 'PRODES indisponível');
+        if (/fetch failed|Failed to fetch|NetworkError|abort|ConnectTimeout|inacessível/i.test(prodesError)) {
+          prodesError = 'Serviço PRODES (INPE) inacessível nesta rede — falha da API do órgão, não do Tabôa';
+        }
+        updateLoading('PRODES indisponível — seguindo com CAR, APP e reserva legal…');
+      }
       if (myGen !== runGeneration) return;
       const prodesGeoms = (prodes.itens || []).map((it) => it.geometry).filter((g) => g?.type);
 
@@ -888,6 +900,12 @@ export function setupConsultaTab(ctx) {
         selectedImovel,
       });
       resultEl.innerHTML = buildConsultaReportHtml();
+      if (prodesError) {
+        const warn = document.createElement('p');
+        warn.className = 'consulta-result-msg consulta-result-err';
+        warn.textContent = `${prodesError}. O restante da consulta (imóvel, APP, reserva legal e laudo) segue normalmente.`;
+        resultEl.prepend(warn);
+      }
       bindPdfButton(resultEl);
 
       clearPreview();
@@ -937,9 +955,13 @@ export function setupConsultaTab(ctx) {
         } catch (_) {}
       }
 
-      setStatus(prodes.count
-        ? `Consulta: ${prodes.count} desmatamento(s) PRODES na área.`
-        : 'Consulta: nenhum desmatamento PRODES na área.', false);
+      if (prodesError) {
+        setStatus(`Consulta concluída. ${prodesError} — o cruzamento PRODES fica pendente.`, true);
+      } else {
+        setStatus(prodes.count
+          ? `Consulta: ${prodes.count} desmatamento(s) PRODES na área.`
+          : 'Consulta: nenhum desmatamento PRODES na área.', false);
+      }
     } catch (e) {
       resultEl.innerHTML = `<p class="consulta-result-err">${esc(e.message || e)}</p>`;
       setStatus('Erro na consulta: ' + (e.message || String(e)), true);

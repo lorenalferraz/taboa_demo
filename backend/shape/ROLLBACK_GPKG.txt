@@ -1,0 +1,35 @@
+Rollback da migração GeoPackage (imóveis / APP / reserva legal)
+==============================================================
+
+Backup local dos GeoJSON (não versionado no git):
+  backend/shape/.backup_geojson_2026-11-23/
+    imoveis_rurais.geojson
+    app.geojson
+    reserva_legal.geojson
+
+Também dá para recuperar do histórico do git (commits anteriores a esta migração).
+
+Como voltar ao estado com GeoJSON
+---------------------------------
+1. Restaurar os arquivos:
+     cp backend/shape/.backup_geojson_2026-11-23/*.geojson backend/shape/
+2. Remover os GPKG ativos (opcional):
+     rm -f backend/shape/{imoveis_rurais,app,reserva_legal}.gpkg
+3. Reverter o código (loader, API, frontend, cruzamentos, indexador) para o
+   commit anterior à migração, ou trocar de volta as extensões .gpkg → .geojson
+   em:
+     - backend/localShapeLoader.js  (+ copiar para shape-runtime.txt)
+     - backend/server.js
+     - backend/relatorio/cruzamentos.js
+     - frontend/.../localShapeLayers.js
+     - frontend/.../consultaTab.js
+4. Reindexar:
+     python3 backend/indexHeavyGeojson.py backend/shape/imoveis_rurais.geojson backend/shape/.cache/imoveis_rurais
+     python3 backend/indexHeavyGeojson.py backend/shape/app.geojson backend/shape/.cache/app
+     python3 backend/indexHeavyGeojson.py backend/shape/reserva_legal.geojson backend/shape/.cache/reserva_legal
+5. Reiniciar a API e conferir mapa / busca CAR / laudo.
+
+Nota
+----
+Em runtime a API continua devolvendo GeoJSON FeatureCollection (Leaflet não
+lê GPKG direto). O .gpkg é só o armazenamento de origem dos três shapes pesados.

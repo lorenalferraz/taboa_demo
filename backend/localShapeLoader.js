@@ -60,10 +60,34 @@ function geometryBbox(geometry) {
 const SHAPE_DIR = path.join(__dirname, 'shape');
 const MUNICIPIOS_FILE = 'municipios.geojson';
 const ASSENTAMENTOS_FILE = 'assentamentos_car.geojson';
-const ALERTAS_FILE = 'alertas.geojson';
+/** Removido (MapBiomas). Mantido só para não quebrar imports antigos. */
+const ALERTAS_FILE = null;
 /** Acima disso o JSON.parse em string única estoura o limite do V8 (~512 MB). */
 const STREAM_BYTES = 320 * 1024 * 1024;
-const HEAVY_SHAPE_FILES = new Set(['app.geojson', 'reserva_legal.geojson', 'imoveis_rurais.geojson']);
+/** Camadas pesadas lógicas: montadas a partir de várias partes .gpkg (região + CEFIR). */
+const HEAVY_SHAPE_FILES = new Set(['app.gpkg', 'reserva_legal.gpkg', 'imoveis_rurais.gpkg']);
+
+/** @type {Record<string, string[]> | null} */
+let _heavyPartsManifest = null;
+
+function loadHeavyPartsManifest() {
+  if (_heavyPartsManifest) return _heavyPartsManifest;
+  const fp = path.join(SHAPE_DIR, 'heavy_shape_parts.json');
+  try {
+    _heavyPartsManifest = JSON.parse(fs.readFileSync(fp, 'utf8'));
+  } catch (_) {
+    _heavyPartsManifest = {};
+  }
+  return _heavyPartsManifest;
+}
+
+/** Arquivos físicos que compõem a camada lógica (ex.: app.gpkg → partes por região). */
+function heavySourceParts(logicalName) {
+  const man = loadHeavyPartsManifest();
+  const parts = man[logicalName];
+  if (Array.isArray(parts) && parts.length) return parts.map((f) => path.basename(String(f)));
+  return [path.basename(String(logicalName))];
+}
 
 /** @type {Map<string, object>} */
 const _cache = new Map();
@@ -75,9 +99,9 @@ function shapePath(filename) {
 }
 
 function shouldStreamFile(filename) {
+  if (HEAVY_SHAPE_FILES.has(filename)) return true;
   const fp = shapePath(filename);
   if (!fs.existsSync(fp)) return false;
-  if (HEAVY_SHAPE_FILES.has(filename)) return true;
   return fs.statSync(fp).size >= STREAM_BYTES;
 }
 
@@ -239,23 +263,34 @@ function iterateGeoJsonFeatures(filename, onFeature) {
 const _heavyIndex = new Map();
 
 function heavyCacheDir(filename) {
-  return path.join(SHAPE_DIR, '.cache', filename.replace(/\.geojson$/i, ''));
+  const stem = path.basename(String(filename || '')).replace(/\.(geojson|gpkg)$/i, '');
+  return path.join(SHAPE_DIR, '.cache', stem);
 }
 
 function heavyIndexFresh(filename) {
   const dir = heavyCacheDir(filename);
   const metaFp = path.join(dir, 'meta.json');
-  const srcFp = shapePath(filename);
-  if (!fs.existsSync(metaFp) || !fs.existsSync(srcFp)) return false;
-  if (!fs.existsSync(path.join(dir, 'features.ndjson'))) return false;
+  const parts = heavySourceParts(filename);
+  if (!parts.length) return false;
+  for (const part of parts) {
+    if (!fs.existsSync(shapePath(part))) return false;
+  }
+  if (!fs.existsSync(metaFp)) return false;
+  // No GitHub só vai o .map (o full estoura 100 MB). Análise usa o map se o full não existir.
   if (!fs.existsSync(path.join(dir, 'features.map.ndjson'))) return false;
   if (!fs.existsSync(path.join(dir, 'bboxes.f64'))) return false;
-  if (!fs.existsSync(path.join(dir, 'offsets.u64'))) return false;
   if (!fs.existsSync(path.join(dir, 'offsets.map.u64'))) return false;
   try {
     const meta = JSON.parse(fs.readFileSync(metaFp, 'utf8'));
-    const st = fs.statSync(srcFp);
-    return Number(meta.version) >= 2 && Number(meta.size) === st.size;
+    if (Number(meta.version) < 3) return false;
+    const sources = Array.isArray(meta.sources) ? meta.sources : [];
+    if (sources.length !== parts.length) return false;
+    for (let i = 0; i < parts.length; i++) {
+      const st = fs.statSync(shapePath(parts[i]));
+      const src = sources[i];
+      if (!src || String(src.file) !== parts[i] || Number(src.size) !== st.size) return false;
+    }
+    return true;
   } catch (_) {
     return false;
   }
@@ -265,11 +300,12 @@ function buildHeavyIndex(filename) {
   const script = path.join(__dirname, 'indexHeavyGeojson.py');
   const dir = heavyCacheDir(filename);
   fs.mkdirSync(dir, { recursive: true });
-  console.log(`Indexando ${filename} (arquivo grande)…`);
-  const r = spawnSync('python3', [script, shapePath(filename), dir], {
+  const parts = heavySourceParts(filename).map((f) => shapePath(f));
+  console.log(`Indexando ${filename} (${parts.length} parte(s))…`);
+  const r = spawnSync('python3', [script, dir, ...parts], {
     encoding: 'utf8',
-    timeout: 10 * 60 * 1000,
-    maxBuffer: 8 * 1024 * 1024,
+    timeout: 30 * 60 * 1000,
+    maxBuffer: 16 * 1024 * 1024,
   });
   if (r.status !== 0) {
     throw new Error((r.stderr || r.stdout || `falha ao indexar ${filename}`).trim());
@@ -290,15 +326,19 @@ function loadHeavyIndex(filename) {
   if (!heavyIndexFresh(filename)) buildHeavyIndex(filename);
   const dir = heavyCacheDir(filename);
   const bboxBuf = fs.readFileSync(path.join(dir, 'bboxes.f64'));
-  const offBuf = fs.readFileSync(path.join(dir, 'offsets.u64'));
   const mapOffBuf = fs.readFileSync(path.join(dir, 'offsets.map.u64'));
+  const mapNdjsonPath = path.join(dir, 'features.map.ndjson');
+  const fullNdjsonPath = path.join(dir, 'features.ndjson');
+  const fullOffPath = path.join(dir, 'offsets.u64');
+  const hasFull = fs.existsSync(fullNdjsonPath) && fs.existsSync(fullOffPath);
+  const offBuf = hasFull ? fs.readFileSync(fullOffPath) : mapOffBuf;
   const idx = {
-    n: Math.floor(offBuf.byteLength / 8),
+    n: Math.floor(mapOffBuf.byteLength / 8),
     bboxes: asFloat64(bboxBuf),
     offsets: asBigUint64(offBuf),
     mapOffsets: asBigUint64(mapOffBuf),
-    ndjsonPath: path.join(dir, 'features.ndjson'),
-    mapNdjsonPath: path.join(dir, 'features.map.ndjson'),
+    ndjsonPath: hasFull ? fullNdjsonPath : mapNdjsonPath,
+    mapNdjsonPath,
     fd: null,
     mapFd: null,
   };
@@ -558,7 +598,7 @@ async function ensureImoveisCatalog() {
   if (_imoveisCatalog) return _imoveisCatalog;
   if (_imoveisCatalogPromise) return _imoveisCatalogPromise;
   _imoveisCatalogPromise = (async () => {
-    const idx = loadHeavyIndex('imoveis_rurais.geojson');
+    const idx = loadHeavyIndex('imoveis_rurais.gpkg');
     const cachePath = imoveisCatalogCachePath(idx);
     if (catalogCacheFresh(cachePath, idx)) {
       try {
@@ -686,7 +726,7 @@ function getImovelByIndex(i, opts = {}) {
     // Fallback síncrono não disponível: o caller async deve usar getImovelByIndexAsync.
     return null;
   }
-  const idx = loadHeavyIndex('imoveis_rurais.geojson');
+  const idx = loadHeavyIndex('imoveis_rurais.gpkg');
   const n = Number(i);
   if (!Number.isFinite(n) || n < 0 || n >= idx.n) return null;
   return readIndexedFeature(idx, n, !!opts.map);

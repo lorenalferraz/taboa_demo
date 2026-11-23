@@ -208,7 +208,7 @@ const LAYERS = [
   },
   {
     id: 'reserva_legal',
-    file: 'reserva_legal.geojson',
+    file: 'reserva_legal.gpkg',
     label: 'Reserva legal',
     sub: '',
     nameKeys: ['TIPO', 'tipo', 'IDE_IMOVEL'],
@@ -218,7 +218,7 @@ const LAYERS = [
   },
   {
     id: 'app',
-    file: 'app.geojson',
+    file: 'app.gpkg',
     label: 'Áreas de preservação permanente',
     sub: '',
     nameKeys: ['TIPO', 'tipo', 'IDE_IMOVEL'],
@@ -280,7 +280,7 @@ function propriedadeLigada(props, imoveisById) {
 async function loadImoveisById(aoiBbox) {
   const map = new Map();
   try {
-    const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
+    const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.gpkg', aoiBbox, 0);
     for (const f of fc.features || []) {
       const p = f.properties || {};
       const ide = p.IDE_IMOVEL != null ? String(p.IDE_IMOVEL).trim() : '';
@@ -688,7 +688,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
   let aoiBbox = null;
   try { aoiBbox = geomBbox(aoiFeat); } catch (_) { return []; }
   const ides = new Set();
-  for (const file of ['app.geojson', 'reserva_legal.geojson']) {
+  for (const file of ['app.gpkg', 'reserva_legal.gpkg']) {
     let fc;
     try {
       fc = await shapeFn('loadFeaturesByBbox')(file, aoiBbox, 0);
@@ -710,7 +710,7 @@ async function imoveisLigadosARlApp(aoiGeom) {
   if (!ides.size) return [];
   let fc;
   try {
-    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
+    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.gpkg', aoiBbox, 0);
   } catch (_) {
     return [];
   }
@@ -739,7 +739,7 @@ async function imoveisQueCruzamArea(aoiGeom) {
   try { aoiHa = geomAreaHa(aoiFeat); } catch (_) {}
   let fc;
   try {
-    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', aoiBbox, 0);
+    fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.gpkg', aoiBbox, 0);
   } catch (_) {
     return [];
   }
@@ -784,7 +784,7 @@ async function identificarImoveisCadastrais({ aoiGeom, point, isPoint } = {}) {
       const pad = 0.003;
       const bbox = [lng - pad, lat - pad, lng + pad, lat + pad];
       try {
-        const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.geojson', bbox, 0);
+        const fc = await shapeFn('loadFeaturesByBbox')('imoveis_rurais.gpkg', bbox, 0);
         for (const f of fc.features || []) {
           if (!f?.geometry) continue;
           try {
@@ -834,8 +834,8 @@ async function identificarRlAppDoImovel(imoveis) {
     });
   };
   const [rl, app] = await Promise.all([
-    pick('reserva_legal.geojson'),
-    pick('app.geojson'),
+    pick('reserva_legal.gpkg'),
+    pick('app.gpkg'),
   ]);
   return { rl, app };
 }
@@ -862,12 +862,20 @@ async function fetchProdesInBbox(bbox) {
       startIndex: String(start),
     });
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
+    const timer = setTimeout(() => ctrl.abort(), 12000);
     let data;
     try {
       const resp = await fetch(`${PRODES_WFS}?${params}`, { signal: ctrl.signal });
-      if (!resp.ok) throw new Error('Falha ao consultar o PRODES.');
+      if (!resp.ok) throw new Error('Falha ao consultar o PRODES (INPE).');
       data = await resp.json();
+    } catch (e) {
+      const msg = String(e?.cause?.message || e?.message || e || '');
+      if (/fetch failed|ConnectTimeout|UND_ERR|abort|ECONN|ENOTFOUND|timed out/i.test(msg)) {
+        throw new Error(
+          'Serviço PRODES (Terrabrasilis/INPE) inacessível nesta rede. A falha é da API do órgão, não do Tabôa.',
+        );
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }

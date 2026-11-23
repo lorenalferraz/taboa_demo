@@ -16,6 +16,30 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const KEY = 'taboa_aviso_inpe_prodes_v1';
+    try {
+      if (sessionStorage.getItem(KEY) === '1') return undefined;
+    } catch (_) {}
+    const overlay = document.getElementById('avisoInpeOverlay');
+    const btn = document.getElementById('btnAvisoInpeOk');
+    if (!overlay || !btn) return undefined;
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    const close = () => {
+      overlay.classList.add('hidden');
+      overlay.setAttribute('aria-hidden', 'true');
+      try { sessionStorage.setItem(KEY, '1'); } catch (_) {}
+    };
+    btn.addEventListener('click', close);
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      btn.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -561,6 +585,33 @@ export default function App() {
         <div className="loading-box">
           <div className="loading-spinner" aria-hidden="true" />
           <div className="loading-label" id="loadingLabel">Processando…</div>
+        </div>
+      </div>
+
+      {/* Aviso: API PRODES/INPE inacessível */}
+      <div
+        className="modal-overlay hidden"
+        id="avisoInpeOverlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="avisoInpeTitle"
+        aria-hidden="true"
+      >
+        <div className="modal modal-aviso-inpe">
+          <h2 id="avisoInpeTitle">Dados do INPE temporariamente indisponíveis</h2>
+          <p>
+            O serviço de desmatamento <strong>PRODES</strong> (Terrabrasilis / INPE) está
+            inacessível neste momento. Isso é uma falha da API do órgão, não do Tabôa.
+          </p>
+          <p>
+            Você pode usar o mapa, o CAR, as restrições legais e o laudo normalmente.
+            O cruzamento com alertas PRODES fica pendente até o serviço do INPE voltar.
+          </p>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-primary" id="btnAvisoInpeOk">
+              Entendi
+            </button>
+          </div>
         </div>
       </div>
 

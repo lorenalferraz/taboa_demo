@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Indexa GeoJSON grande em ndjson + bbox/offsets.
+"""Indexa shape(s) pesado(s) (GeoJSON ou GeoPackage) em ndjson + bbox/offsets.
+
+Aceita um ou vários arquivos de origem (partes por região / CEFIR).
+Reprojeta para EPSG:4326 quando a origem não for geográfica.
+Normaliza atributos do CEFIR (minúsculos → maiúsculos do SICAR).
 
 Gera também uma cópia *map* (coordenadas arredondadas + anel simplificado)
 só para exibição. O ndjson original permanece para cruzamento/PDF.
@@ -13,7 +17,22 @@ import struct
 import sys
 
 MAP_PRECISION = 5
-MAP_TOLERANCE = 0.00003  # ~3 m — irrelevante na escala do mapa satélite
+MAP_TOLERANCE = 0.00003  # ~3 m
+
+# Campos CEFIR (assentamento) → padrão usado no sistema
+PROP_ALIASES = {
+    "ide_imovel": "IDE_IMOVEL",
+    "tpo_cadast": "TPO_CADAST",
+    "tipo": "TIPO",
+    "area_decla": "AREA_DECLA",
+    "est_conser": "EST_CONSER",
+    "status": "STATUS",
+    "numero_car": "NUMERO_CAR",
+    "denominaca": "DENOMINACA",
+    "municipio": "MUNICIPIO",
+    "area_regis": "AREA_REGIS",
+    "qtd_modfis": "QTD_MODFIS",
+}
 
 
 def geom_bbox(geom):
@@ -135,32 +154,143 @@ def lighten_feature(feat):
     return out
 
 
-def write_ndjson(path, features, transform=None):
-    offsets = []
-    off = 0
-    with open(path, "w", encoding="utf-8") as out:
-        for feat in features:
-            item = transform(feat) if transform else feat
-            line = json.dumps(item, ensure_ascii=False, separators=(",", ":")) + "\n"
-            offsets.append(off)
-            encoded = line.encode("utf-8")
-            out.write(line)
-            off += len(encoded)
-    return offsets
+def fix_mojibake(s):
+    if not isinstance(s, str) or "Ã" not in s:
+        return s
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except Exception:
+        return s
+
+
+def _field_value(feat, i):
+    try:
+        val = feat.GetField(i)
+    except Exception:
+        return None
+    if val is None:
+        return None
+    if isinstance(val, bytes):
+        try:
+            return fix_mojibake(val.decode("utf-8"))
+        except Exception:
+            try:
+                return fix_mojibake(val.decode("latin-1"))
+            except Exception:
+                return None
+    if isinstance(val, str):
+        return fix_mojibake(val)
+    if hasattr(val, "isoformat"):
+        try:
+            return val.isoformat()
+        except Exception:
+            return str(val)
+    return val
+
+
+def normalize_props(props):
+    out = {}
+    for k, v in (props or {}).items():
+        if k is None:
+            continue
+        key = str(k)
+        if key.lower() in ("fid", "ogc_fid", "gid"):
+            continue
+        mapped = PROP_ALIASES.get(key) or PROP_ALIASES.get(key.lower()) or key
+        # Preferir já-maiúsculo se ambos existirem
+        if mapped in out and key != mapped:
+            continue
+        out[mapped] = v
+    return out
+
+
+def iter_features_from_gpkg(src):
+    from osgeo import ogr, osr
+
+    ogr.UseExceptions()
+    ds = ogr.Open(src)
+    if ds is None:
+        raise RuntimeError(f"não foi possível abrir {src}")
+    layer = ds.GetLayer(0)
+    if layer is None:
+        raise RuntimeError(f"sem camada em {src}")
+
+    src_srs = layer.GetSpatialRef()
+    dst_srs = osr.SpatialReference()
+    dst_srs.ImportFromEPSG(4326)
+    try:
+        dst_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    except Exception:
+        pass
+    transform = None
+    if src_srs is not None:
+        try:
+            src_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        except Exception:
+            pass
+        if not src_srs.IsSame(dst_srs):
+            transform = osr.CoordinateTransformation(src_srs, dst_srs)
+
+    layer.ResetReading()
+    while True:
+        feat = layer.GetNextFeature()
+        if feat is None:
+            break
+        props = {}
+        for i in range(feat.GetFieldCount()):
+            name = feat.GetFieldDefnRef(i).GetName()
+            props[name] = _field_value(feat, i)
+        props = normalize_props(props)
+        geom = feat.GetGeometryRef()
+        geometry = None
+        if geom is not None:
+            g = geom.Clone()
+            if transform is not None:
+                try:
+                    g.Transform(transform)
+                except Exception:
+                    pass
+            geometry = json.loads(g.ExportToJson())
+        yield {
+            "type": "Feature",
+            "properties": props,
+            "geometry": geometry,
+        }
+    ds = None
+
+
+def iter_features_from_geojson(src):
+    with open(src, "r", encoding="utf-8") as f:
+        fc = json.load(f)
+    for feat in fc.get("features") or []:
+        if not isinstance(feat, dict):
+            continue
+        yield {
+            "type": "Feature",
+            "properties": normalize_props(feat.get("properties") or {}),
+            "geometry": feat.get("geometry"),
+        }
+
+
+def iter_features(src):
+    lower = src.lower()
+    if lower.endswith(".gpkg"):
+        yield from iter_features_from_gpkg(src)
+    else:
+        yield from iter_features_from_geojson(src)
 
 
 def main():
     if len(sys.argv) < 3:
-        print("uso: indexHeavyGeojson.py <arquivo.geojson> <pasta-saida>", file=sys.stderr)
+        print(
+            "uso: indexHeavyGeojson.py <pasta-saida> <arquivo1.gpkg|geojson> [arquivo2 ...]",
+            file=sys.stderr,
+        )
         sys.exit(2)
-    src = sys.argv[1]
-    out_dir = sys.argv[2]
+    out_dir = sys.argv[1]
+    sources = sys.argv[2:]
     os.makedirs(out_dir, exist_ok=True)
 
-    print(f"indexando {src} …", flush=True)
-    with open(src, "r", encoding="utf-8") as f:
-        fc = json.load(f)
-    features = fc.get("features") or []
     ndjson_path = os.path.join(out_dir, "features.ndjson")
     map_path = os.path.join(out_dir, "features.map.ndjson")
     bbox_path = os.path.join(out_dir, "bboxes.f64")
@@ -168,14 +298,50 @@ def main():
     map_off_path = os.path.join(out_dir, "offsets.map.u64")
     meta_path = os.path.join(out_dir, "meta.json")
 
-    st = os.stat(src)
+    offsets = []
+    map_offsets = []
     bboxes = []
-    for feat in features:
-        geom = feat.get("geometry") if isinstance(feat, dict) else None
-        bboxes.extend(geom_bbox(geom))
+    count = 0
+    off = 0
+    map_off = 0
+    source_meta = []
 
-    offsets = write_ndjson(ndjson_path, features)
-    map_offsets = write_ndjson(map_path, features, lighten_feature)
+    print(f"indexando {len(sources)} origem(ns) → {out_dir}", flush=True)
+    with open(ndjson_path, "w", encoding="utf-8") as full_out, open(
+        map_path, "w", encoding="utf-8"
+    ) as map_out:
+        for src in sources:
+            if not os.path.exists(src):
+                raise FileNotFoundError(src)
+            st = os.stat(src)
+            source_meta.append(
+                {
+                    "file": os.path.basename(src),
+                    "size": st.st_size,
+                    "mtimeMs": int(st.st_mtime * 1000),
+                }
+            )
+            print(f"  · {os.path.basename(src)} …", flush=True)
+            n_src = 0
+            for feat in iter_features(src):
+                geom = feat.get("geometry") if isinstance(feat, dict) else None
+                bboxes.extend(geom_bbox(geom))
+                line = json.dumps(feat, ensure_ascii=False, separators=(",", ":")) + "\n"
+                encoded = line.encode("utf-8")
+                offsets.append(off)
+                full_out.write(line)
+                off += len(encoded)
+
+                light = lighten_feature(feat)
+                map_line = json.dumps(light, ensure_ascii=False, separators=(",", ":")) + "\n"
+                map_encoded = map_line.encode("utf-8")
+                map_offsets.append(map_off)
+                map_out.write(map_line)
+                map_off += len(map_encoded)
+
+                count += 1
+                n_src += 1
+            print(f"    {n_src} feições", flush=True)
 
     with open(bbox_path, "wb") as bf:
         bf.write(struct.pack(f"<{len(bboxes)}d", *bboxes) if bboxes else b"")
@@ -183,22 +349,28 @@ def main():
         of.write(struct.pack(f"<{len(offsets)}Q", *offsets) if offsets else b"")
     with open(map_off_path, "wb") as of:
         of.write(struct.pack(f"<{len(map_offsets)}Q", *map_offsets) if map_offsets else b"")
+
+    total_size = sum(s["size"] for s in source_meta)
     with open(meta_path, "w", encoding="utf-8") as mf:
         json.dump(
             {
-                "version": 2,
-                "count": len(features),
-                "size": st.st_size,
-                "mtimeMs": int(st.st_mtime * 1000),
-                "source": os.path.basename(src),
+                "version": 3,
+                "count": count,
+                "size": total_size,
+                "sources": source_meta,
+                "source": ",".join(s["file"] for s in source_meta),
+                "format": "gpkg-parts",
+                "crsOut": "EPSG:4326",
                 "map": True,
                 "mapPrecision": MAP_PRECISION,
             },
             mf,
         )
-    src_mb = st.st_size / (1024 * 1024)
     map_mb = os.path.getsize(map_path) / (1024 * 1024)
-    print(f"ok {len(features)} feições → {out_dir} (mapa {map_mb:.1f} MB vs origem {src_mb:.1f} MB)", flush=True)
+    print(
+        f"ok {count} feições → {out_dir} (mapa {map_mb:.1f} MB; origem {total_size / (1024 * 1024):.1f} MB)",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 /**
- * Shape oficial dos municípios (backend/shape/municipios.geojson), reprojetado para WGS84.
+ * Shape oficial dos municípios da faixa (62 mun).
+ * Fonte: backend/shape/municipios.gpkg (UTM). Runtime: municipios.geojson em WGS84
+ * (gerado a partir do GPKG) — a API e o Leaflet continuam em GeoJSON.
  */
 const fs = require('fs');
 const path = require('path');

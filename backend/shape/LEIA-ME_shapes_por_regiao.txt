@@ -1,0 +1,45 @@
+ENVIO PARA O GESTOR — GeoPackage por região
+==========================================
+
+CRS: SIRGAS 2000 / UTM 24S (EPSG:31984).
+
+Formato: GeoPackage (.gpkg) — menor que GeoJSON.
+ATENÇÃO: o SIGWEB TABOA hoje consome .geojson.
+Estes .gpkg são para arquivo/envio; para publicar no sistema,
+é preciso converter de volta para GeoJSON (ou adaptar o backend).
+
+Regra anti-duplicata (igual ao pacote GeoJSON):
+  IDE_IMOVEL já presente no litoral_sul do repositório
+  permanece só no litoral_sul (não repete em baixo/extremo).
+
+Extremo Sul: APP em 3 partes e Reserva Legal em 2 partes
+  (balanceadas por tamanho). Usar todas as partes juntas
+  para cobrir a região inteira.
+
+Arquivos:
+  [app_baixo_sul]
+    - app_baixo_sul.gpkg: 15920 feições (22.9 MB)
+  [app_extremo_sul]
+    - app_extremo_sul_parte1de3.gpkg: 11273 feições (75.6 MB)
+    - app_extremo_sul_parte2de3.gpkg: 11274 feições (75.6 MB)
+    - app_extremo_sul_parte3de3.gpkg: 11275 feições (75.7 MB)
+  [app_litoral_sul]
+    - app_litoral_sul.gpkg: 8627 feições (32.5 MB)
+  [imoveis_rurais_baixo_sul]
+    - imoveis_rurais_baixo_sul.gpkg: 42207 feições (30.3 MB)
+  [imoveis_rurais_extremo_sul]
+    - imoveis_rurais_extremo_sul.gpkg: 37940 feições (41.8 MB)
+  [imoveis_rurais_litoral_sul]
+    - imoveis_rurais_litoral_sul.gpkg: 27714 feições (22.2 MB)
+  [municipios]
+    - municipios.gpkg: 62 feições (2.3 MB)
+  [reserva_legal_baixo_sul]
+    - reserva_legal_baixo_sul.gpkg: 37156 feições (21.6 MB)
+  [reserva_legal_extremo_sul]
+    - reserva_legal_extremo_sul_parte1de2.gpkg: 17359 feições (78.9 MB)
+    - reserva_legal_extremo_sul_parte2de2.gpkg: 17361 feições (79.0 MB)
+  [reserva_legal_litoral_sul]
+    - reserva_legal_litoral_sul.gpkg: 26077 feições (22.0 MB)
+
+Total aproximado: 580.5 MB
+
