@@ -17,26 +17,69 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const KEY = 'taboa_aviso_inpe_prodes_v1';
+    // Só avisa se o WMS do INPE falhar no navegador (mapa).
+    // A consulta/laudo usa o WFS pelo servidor e pode funcionar mesmo assim.
+    const KEY = 'taboa_aviso_inpe_prodes_v2';
+    let cancelled = false;
     try {
       if (sessionStorage.getItem(KEY) === '1') return undefined;
     } catch (_) {}
-    const overlay = document.getElementById('avisoInpeOverlay');
-    const btn = document.getElementById('btnAvisoInpeOk');
-    if (!overlay || !btn) return undefined;
-    overlay.classList.remove('hidden');
-    overlay.setAttribute('aria-hidden', 'false');
-    const close = () => {
-      overlay.classList.add('hidden');
-      overlay.setAttribute('aria-hidden', 'true');
-      try { sessionStorage.setItem(KEY, '1'); } catch (_) {}
+
+    const showAviso = () => {
+      if (cancelled) return;
+      const overlay = document.getElementById('avisoInpeOverlay');
+      const btn = document.getElementById('btnAvisoInpeOk');
+      if (!overlay || !btn) return;
+      overlay.classList.remove('hidden');
+      overlay.setAttribute('aria-hidden', 'false');
+      const close = () => {
+        overlay.classList.add('hidden');
+        overlay.setAttribute('aria-hidden', 'true');
+        try { sessionStorage.setItem(KEY, '1'); } catch (_) {}
+        btn.removeEventListener('click', close);
+        window.removeEventListener('keydown', onKey);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') close(); };
+      btn.addEventListener('click', close);
+      window.addEventListener('keydown', onKey);
     };
-    btn.addEventListener('click', close);
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('keydown', onKey);
+
+    // Mesmo caminho do mapa (imagem WMS). fetch/CORS não serve — a camada usa <image>.
+    const probe = new Image();
+    const timer = setTimeout(() => {
+      probe.onload = null;
+      probe.onerror = null;
+      showAviso();
+    }, 10000);
+    probe.onload = () => {
+      clearTimeout(timer);
+    };
+    probe.onerror = () => {
+      clearTimeout(timer);
+      showAviso();
+    };
+    const q = new URLSearchParams({
+      service: 'WMS',
+      version: '1.1.1',
+      request: 'GetMap',
+      layers: 'prodes-mata-atlantica-nb:yearly_deforestation',
+      styles: '',
+      format: 'image/png',
+      transparent: 'true',
+      srs: 'EPSG:4326',
+      width: '8',
+      height: '8',
+      bbox: '-39.2,-14.9,-39.1,-14.8',
+      CQL_FILTER: 'year >= 2020',
+    });
+    probe.src = `https://terrabrasilis.dpi.inpe.br/geoserver/ows?${q}`;
+
     return () => {
-      btn.removeEventListener('click', close);
-      window.removeEventListener('keydown', onKey);
+      cancelled = true;
+      clearTimeout(timer);
+      probe.onload = null;
+      probe.onerror = null;
+      probe.src = '';
     };
   }, []);
 
@@ -353,7 +396,7 @@ export default function App() {
                       <label className="layer-row">
                         <span
                           className="toggle-switch"
-                          style={{ '--layer-color': '#166534', '--layer-color-soft': '#86efac' }}
+                          style={{ '--layer-color': '#14532d', '--layer-color-soft': '#86efac' }}
                         >
                           <input type="checkbox" id="chkInemaReservaLegal" defaultChecked={false} autoComplete="off" aria-label="Reserva legal. Fonte: INEMA" />
                           <span className="toggle-switch-slider" aria-hidden="true" />
@@ -368,7 +411,7 @@ export default function App() {
                       <label className="layer-row">
                         <span
                           className="toggle-switch"
-                          style={{ '--layer-color': '#0e7490', '--layer-color-soft': '#67e8f9' }}
+                          style={{ '--layer-color': '#3f6212', '--layer-color-soft': '#bef264' }}
                         >
                           <input type="checkbox" id="chkInemaApp" defaultChecked={false} autoComplete="off" aria-label="Áreas de preservação permanente. Fonte: INEMA" />
                           <span className="toggle-switch-slider" aria-hidden="true" />
@@ -598,14 +641,18 @@ export default function App() {
         aria-hidden="true"
       >
         <div className="modal modal-aviso-inpe">
-          <h2 id="avisoInpeTitle">Dados do INPE temporariamente indisponíveis</h2>
+          <h2 id="avisoInpeTitle">
+            Dados do INPE temporariamente indisponíveis para visualização no Mapa, porém as
+            consultas de imóveis estão ocorrendo normalmente.
+          </h2>
           <p>
             O serviço de desmatamento <strong>PRODES</strong> (Terrabrasilis / INPE) está
-            inacessível neste momento. Isso é uma falha da API do órgão, não do Tabôa.
+            inacessível neste momento para visualização no mapa. Isso é uma falha temporária
+            da API do órgão.
           </p>
           <p>
-            Você pode usar o mapa, o CAR, as restrições legais e o laudo normalmente.
-            O cruzamento com alertas PRODES fica pendente até o serviço do INPE voltar.
+            Você pode usar o sistema normalmente, porém a exibição dos alertas no mapa
+            ficará pendente até o serviço do INPE voltar.
           </p>
           <div className="modal-actions">
             <button type="button" className="btn btn-primary" id="btnAvisoInpeOk">

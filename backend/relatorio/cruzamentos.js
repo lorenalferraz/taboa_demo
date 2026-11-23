@@ -213,7 +213,7 @@ const LAYERS = [
     sub: '',
     nameKeys: ['TIPO', 'tipo', 'IDE_IMOVEL'],
     fill: '#86efac',
-    stroke: '#166534',
+    stroke: '#14532d',
     legend: 'Reserva legal',
   },
   {
@@ -222,8 +222,8 @@ const LAYERS = [
     label: 'Áreas de preservação permanente',
     sub: '',
     nameKeys: ['TIPO', 'tipo', 'IDE_IMOVEL'],
-    fill: '#67e8f9',
-    stroke: '#0e7490',
+    fill: '#bef264',
+    stroke: '#3f6212',
     legend: 'APP',
   },
   {

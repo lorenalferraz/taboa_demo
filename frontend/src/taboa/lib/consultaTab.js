@@ -22,8 +22,9 @@ const IMOVEL_STYLE = {
   fillOpacity: 0,
   interactive: false,
 };
-const APP_STYLE = { color: '#0e7490', weight: 1.6, fillColor: '#67e8f9', fillOpacity: 0.35, interactive: false };
-const RL_STYLE = { color: '#166534', weight: 1.6, fillColor: '#86efac', fillOpacity: 0.35, interactive: false };
+/** APP e reserva: ambas verdes, tons distintos (lima × floresta). */
+const APP_STYLE = { color: '#3f6212', weight: 1.6, fillColor: '#bef264', fillOpacity: 0.35, interactive: false };
+const RL_STYLE = { color: '#14532d', weight: 1.6, fillColor: '#86efac', fillOpacity: 0.35, interactive: false };
 const DRAW_STYLE = { color: '#0284c7', weight: 2.2, dashArray: '10 7', fill: false, className: 'consulta-draw-line', interactive: false };
 const RUBBER_STYLE = { color: '#38bdf8', weight: 2, dashArray: '7 6', fill: false, className: 'consulta-draw-rubber', interactive: false };
 const CLOSE_STYLE = { color: '#0ea5e9', weight: 2, dashArray: '5 5', fill: false, className: 'consulta-draw-close', interactive: false };

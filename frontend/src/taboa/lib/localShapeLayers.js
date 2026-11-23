@@ -216,7 +216,7 @@ export const SHAPE_OVERLAY_LAYERS = [
     geojson: 'reserva_legal.gpkg',
     heavy: true,
     defaultOn: false,
-    style: { color: '#166534', weight: 1.4, fillColor: '#86efac', fillOpacity: 0.2 },
+    style: { color: '#14532d', weight: 1.4, fillColor: '#86efac', fillOpacity: 0.22 },
     buildPopup: buildReservaLegalPopupHtml,
   },
   {
@@ -227,7 +227,7 @@ export const SHAPE_OVERLAY_LAYERS = [
     geojson: 'app.gpkg',
     heavy: true,
     defaultOn: false,
-    style: { color: '#0e7490', weight: 1.4, fillColor: '#67e8f9', fillOpacity: 0.2 },
+    style: { color: '#3f6212', weight: 1.4, fillColor: '#bef264', fillOpacity: 0.22 },
     buildPopup: buildAppPopupHtml,
   },
 ];

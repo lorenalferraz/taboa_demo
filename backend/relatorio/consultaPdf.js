@@ -938,14 +938,14 @@ async function buildConsultaPdf(raw = {}) {
           id: 'reserva_legal',
           legend: 'Reserva legal do imóvel',
           fill: '#86efac',
-          stroke: '#166534',
+          stroke: '#14532d',
           geom: f.geometry,
         }))),
         ...(hasPropRef ? [] : (rlAppImovel.app || []).map((f) => ({
           id: 'app',
           legend: 'APP do imóvel',
-          fill: '#67e8f9',
-          stroke: '#0e7490',
+          fill: '#bef264',
+          stroke: '#3f6212',
           geom: f.geometry,
         }))),
         ...(prodesCruzamento.itens || []).slice(0, 12).map((it) => ({
@@ -989,6 +989,21 @@ async function buildConsultaPdf(raw = {}) {
         aoiLabel: 'Propriedade (CAR)',
         point: payload.point,
         overlays: [
+          // APP e reserva legal do imóvel de referência (CAR).
+          ...(rlAppImovel.rl || []).map((f) => ({
+            id: 'reserva_legal',
+            legend: 'Reserva legal do imóvel',
+            fill: '#86efac',
+            stroke: '#14532d',
+            geom: f.geometry,
+          })),
+          ...(rlAppImovel.app || []).map((f) => ({
+            id: 'app',
+            legend: 'APP do imóvel',
+            fill: '#bef264',
+            stroke: '#3f6212',
+            geom: f.geometry,
+          })),
           ...(prodesProp.itens || []).slice(0, 12).map((it) => ({
             id: 'prodes',
             legend: 'Alertas - PRODES na propriedade',
