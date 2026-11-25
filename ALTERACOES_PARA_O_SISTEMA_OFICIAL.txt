@@ -1185,6 +1185,20 @@ Como conferir
   e no baixo sul. Consultar um assentamento e conferir APP/RL no laudo.
 
 
+43. Remoção do painel analítico — 25/11/2026
+------------------------------------------------------------------------------------
+
+O que passou a valer
+  - Removido o painel analítico da direita (UI, CSS, lógica e
+    GET /api/prodes/resumo). A consulta e o cruzamento PRODES no laudo
+    continuam iguais.
+
+Arquivos
+  - frontend/src/App.jsx, bootstrap.js, app.css
+  - removido: frontend/src/taboa/lib/analyticsPanel.js
+  - backend/server.js, backend/relatorio/cruzamentos.js
+
+
 Próximas alterações
 -------------------
 Acrescentar abaixo, neste formato:

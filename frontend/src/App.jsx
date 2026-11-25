@@ -128,42 +128,6 @@ export default function App() {
       <div className="map-wrap" id="pageMapa">
         <div id="map" />
 
-        {/* ── Painel analítico direito ──────────────────────── */}
-        <div className="analytics-wrap collapsed" id="analyticsWrap">
-          <button
-            type="button"
-            className="analytics-toggle"
-            id="analyticsToggle"
-            title="Abrir painel analítico"
-            aria-label="Abrir painel analítico"
-            aria-expanded="false"
-            aria-controls="analyticsPanelBody"
-          >
-            <span className="toggle-icon" aria-hidden="true">‹</span>
-            <span className="analytics-toggle-label">Abrir painel analítico</span>
-          </button>
-          <div className="analytics-panel">
-            <div className="analytics-header">
-              <span>Analítico</span>
-              <div className="analytics-header-actions">
-                <span id="analyticsAlertsCount" className="analytics-count">—</span>
-                <button
-                  type="button"
-                  className="analytics-close"
-                  id="analyticsClose"
-                  title="Fechar painel analítico"
-                  aria-label="Fechar painel analítico"
-                >
-                  <span aria-hidden="true">×</span>
-                </button>
-              </div>
-            </div>
-            <div className="analytics-body" id="analyticsPanelBody">
-              <div className="analytic-empty">Carregue os dados para visualizar o painel analítico.</div>
-            </div>
-          </div>
-        </div>
-
         {/* ── Sidebar esquerda ──────────────────────────────── */}
         <div className="sidebar-wrap" id="sidebarWrap">
           <div className="sidebar">

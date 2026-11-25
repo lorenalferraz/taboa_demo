@@ -1388,7 +1388,7 @@ export function setupConsultaTab(ctx) {
 
   function onDomPick(ev) {
     if (mapMode === 'idle') return;
-    if (ev.target?.closest?.('.leaflet-control, .leaflet-popup, .sidebar, .topbar, .analytics-wrap')) return;
+    if (ev.target?.closest?.('.leaflet-control, .leaflet-popup, .sidebar, .topbar')) return;
     const map = liveMap();
     if (!map) return;
     if (dragging) {
@@ -1406,7 +1406,7 @@ export function setupConsultaTab(ctx) {
 
   function onDomDblClick(ev) {
     if (mapMode !== 'polygon') return;
-    if (ev.target?.closest?.('.leaflet-control, .leaflet-popup, .sidebar, .topbar, .analytics-wrap')) return;
+    if (ev.target?.closest?.('.leaflet-control, .leaflet-popup, .sidebar, .topbar')) return;
     ev.preventDefault();
     ev.stopPropagation();
     const map = liveMap();

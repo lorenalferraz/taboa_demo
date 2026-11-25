@@ -556,29 +556,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/prodes/resumo — totais do PRODES (2020+) nos municípios, para o painel analítico
-  if (targetPath === '/api/prodes/resumo' && req.method === 'GET') {
-    (async () => {
-      try {
-        const mod = require('./relatorio/cruzamentos');
-        const fn = mod.resumoProdesMunicipios || (mod.default && mod.default.resumoProdesMunicipios);
-        const data = await fn();
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'public, max-age=1800',
-          ...CORS_HEADERS,
-        });
-        res.end(JSON.stringify({ ok: true, ...data }));
-      } catch (e) {
-        if (!res.headersSent) {
-          res.writeHead(502, { 'Content-Type': 'application/json', ...CORS_HEADERS });
-          res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
-        }
-      }
-    })();
-    return;
-  }
-
   // POST /api/prodes/cruzar { aoi } — desmatamentos PRODES (2020+) que cruzam a área da consulta
   if (targetPath === '/api/prodes/cruzar' && req.method === 'POST') {
     (async () => {

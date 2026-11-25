@@ -32,7 +32,6 @@ import { groupFaixaFeaturesByMunicipio } from './lib/faixaScanUtils.js';
 import { normalizeFaixaShapeGeoJSON } from './lib/faixaShapeNormalize.js';
 import { pickShapeFilename } from './lib/shapePick.js';
 import { applyLightTheme } from './lib/theme.js';
-import { renderProdesAnalyticsHtml } from './lib/analyticsPanel.js';
 import { yieldToMain } from './lib/yieldToMain.js';
 import {
   initPeriodFilter,
@@ -1180,42 +1179,6 @@ export function bootstrapTaboa() {
       });
     }
 
-    let prodesResumo = null;
-    let prodesResumoErro = false;
-    let prodesResumoLoading = null;
-
-    function loadProdesResumo() {
-      if (prodesResumoLoading) return prodesResumoLoading;
-      prodesResumoErro = false;
-      prodesResumoLoading = fetch(`${API_BASE}/api/prodes/resumo`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (!data?.ok) throw new Error(data?.error || 'Falha no resumo do PRODES.');
-          prodesResumo = data;
-        })
-        .catch((e) => {
-          console.warn('resumo PRODES:', e);
-          prodesResumoErro = true;
-          prodesResumoLoading = null;
-        })
-        .finally(() => updateAnalyticPanel());
-      return prodesResumoLoading;
-    }
-
-    function updateAnalyticPanel() {
-      const body = document.getElementById('analyticsPanelBody');
-      const countEl = document.getElementById('analyticsAlertsCount');
-      if (!body) return;
-      if (countEl) countEl.textContent = prodesResumo ? prodesResumo.total.toLocaleString('pt-BR') : '—';
-      if (prodesResumo) {
-        body.innerHTML = renderProdesAnalyticsHtml(prodesResumo);
-      } else if (prodesResumoErro) {
-        body.innerHTML = '<div class="analytic-empty">Não foi possível carregar o resumo do PRODES.</div>';
-      } else {
-        body.innerHTML = '<div class="analytic-empty">Carregando o resumo do PRODES…</div>';
-      }
-    }
-
     function setupFilterTabs() {
       const tabs = document.querySelectorAll('.filter-tabs-bar .alerts-tab');
       const contents = [
@@ -1331,25 +1294,6 @@ export function bootstrapTaboa() {
     document.getElementById('sidebarToggle').addEventListener('click', function () {
       document.getElementById('sidebarWrap').classList.toggle('collapsed');
     });
-
-    function setAnalyticsOpen(open) {
-      const wrap = document.getElementById('analyticsWrap');
-      const toggle = document.getElementById('analyticsToggle');
-      if (!wrap) return;
-      wrap.classList.toggle('collapsed', !open);
-      if (toggle) {
-        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      }
-    }
-
-    document.getElementById('analyticsToggle')?.addEventListener('click', function () {
-      setAnalyticsOpen(true);
-    });
-    document.getElementById('analyticsClose')?.addEventListener('click', function () {
-      setAnalyticsOpen(false);
-    });
-    updateAnalyticPanel();
-    loadProdesResumo();
 
     // ─── Registros ────────────────────────────────────────────────────────────
 
